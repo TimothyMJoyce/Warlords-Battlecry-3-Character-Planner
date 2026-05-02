@@ -37,6 +37,7 @@ let activeSavedBuildId = null;
 let localPathStatus = null;
 let importedBuildMetadata = importedHeroBuildMetadata;
 let localHeroImportError = "";
+let localSettingsStatus = "";
 
 const app = document.querySelector("#app");
 
@@ -55,7 +56,7 @@ function render() {
       <header class="topbar">
         <div class="top-actions">
           <div class="rules-pill">Rules: WBC3 10323</div>
-          ${localPathStatus ? localFilesMenu(localPathStatus) : ""}
+          ${localPathStatus ? settingsMenu(localPathStatus) : ""}
           <details class="saved-menu">
             <summary>
               <span>Saved Builds</span>
@@ -269,6 +270,18 @@ function bindEvents() {
 
   document.querySelector("#save-current-build").addEventListener("click", () => {
     saveCurrentBuild();
+  });
+
+  const settingsForm = document.querySelector("#local-settings-form");
+  if (settingsForm) {
+    settingsForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      saveLocalPathSettings(settingsForm);
+    });
+  }
+
+  document.querySelector("#clear-local-settings")?.addEventListener("click", () => {
+    clearLocalPathSettings();
   });
 
   document.querySelectorAll("[data-load-build]").forEach((button) => {
@@ -565,33 +578,52 @@ function savedBuildRow(savedBuild) {
   `;
 }
 
-function localFilesMenu(status) {
+function settingsMenu(status) {
+  const settings = status.settings ?? {};
   const entries = Array.isArray(status.paths) ? status.paths : [];
+  const entriesByLabel = new Map(entries.map((entry) => [entry.label, entry]));
   const found = entries.filter((entry) => entry.ok).length;
-
+  const count = entries.length || 4;
+  const stateClass = found === count ? "is-valid" : "is-missing";
   return `
-    <details class="local-files-menu">
+    <details class="settings-menu ${stateClass}">
       <summary>
-        <span>Local Files</span>
-        <strong>${found}/${entries.length}</strong>
+        <span>Settings</span>
+        <strong>${found}/${count}</strong>
       </summary>
-      <div class="local-files-panel">
-        <h3>Detected Local Files</h3>
-        <div class="local-files-list">
-          ${entries.map(localFileRow).join("")}
-        </div>
+      <div class="settings-panel">
+        <h3>Paths</h3>
+        <form id="local-settings-form" class="settings-form">
+          ${settingsField("Game Install", "gameInstallDir", settings.gameInstallDir, entriesByLabel.get("Game Install"))}
+          ${settingsField("HeroData", "heroDataPath", settings.heroDataPath, entriesByLabel.get("HeroData"))}
+          ${settingsField("Portraits", "portraitsPath", settings.portraitsPath, entriesByLabel.get("Portraits"))}
+          ${settingsField("Graphics", "graphicsPath", settings.graphicsPath, entriesByLabel.get("Graphics"))}
+          <div class="settings-actions">
+            <button type="submit">Save Paths</button>
+            <button type="button" id="clear-local-settings">Auto Detect</button>
+          </div>
+          ${localSettingsStatus ? `<p class="settings-status">${escapeHtml(localSettingsStatus)}</p>` : ""}
+        </form>
       </div>
     </details>
   `;
 }
 
-function localFileRow(entry) {
+function settingsField(label, name, value = "", entry = null) {
+  const trimmedValue = String(value ?? "").trim();
+  const inputValue = trimmedValue || (entry?.ok ? entry.path : "");
+  const stateClass = entry?.ok ? "is-valid" : "is-missing";
+  const statusText = entry?.ok ? (trimmedValue ? "Saved path found" : "Auto path found") : "Path not found";
+  const detail = entry?.ok ? entry.path : entry?.error ?? "";
   return `
-    <div class="local-file-row ${entry.ok ? "" : "is-missing"}">
-      <span>${escapeHtml(entry.label)}</span>
-      <strong>${entry.ok ? "Found" : "Missing"}</strong>
-      <small>${escapeHtml(entry.path ?? entry.error ?? "")}</small>
-    </div>
+    <label class="settings-field ${stateClass}">
+      <span>
+        <strong>${label}</strong>
+        <em>${statusText}</em>
+      </span>
+      <input name="${name}" type="text" value="${escapeHtml(inputValue)}" autocomplete="off" />
+      <small>${escapeHtml(detail)}</small>
+    </label>
   `;
 }
 
@@ -806,4 +838,56 @@ async function loadLocalHeroBuilds() {
   } catch {
     // Static web hosting does not provide the local desktop API.
   }
+}
+
+async function saveLocalPathSettings(form) {
+  const formData = new FormData(form);
+  const payload = {
+    gameInstallDir: String(formData.get("gameInstallDir") ?? ""),
+    heroDataPath: String(formData.get("heroDataPath") ?? ""),
+    portraitsPath: String(formData.get("portraitsPath") ?? ""),
+    graphicsPath: String(formData.get("graphicsPath") ?? ""),
+  };
+  localSettingsStatus = "Saving paths...";
+  render();
+  try {
+    const response = await fetch("/api/local/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const body = await response.json().catch(() => null);
+
+    if (!response.ok || !body?.ok) {
+      localSettingsStatus = body?.error ? `Settings failed: ${body.error}` : "Settings failed.";
+      render();
+      return;
+    }
+
+    localPathStatus = body.pathStatus ?? localPathStatus;
+    localSettingsStatus = "Paths saved.";
+
+    if (body.heroImport?.ok) {
+      localHeroImportError = "";
+      mergeImportedHeroBuilds(body.heroImport.builds, body.heroImport.metadata);
+      return;
+    }
+
+    if (body.heroImport?.error) {
+      localHeroImportError = `Hero import failed: ${body.heroImport.error}`;
+    }
+    render();
+  } catch (error) {
+    localSettingsStatus = error instanceof Error ? `Settings failed: ${error.message}` : "Settings failed.";
+    render();
+  }
+}
+
+function clearLocalPathSettings() {
+  const form = document.querySelector("#local-settings-form");
+  if (!form) return;
+  for (const input of form.querySelectorAll("input")) {
+    input.value = "";
+  }
+  saveLocalPathSettings(form);
 }

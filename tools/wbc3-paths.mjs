@@ -11,20 +11,24 @@ const HERO_DATA_RELATIVE_PATH = join(GAME_FOLDER_NAME, "HeroData.xcr");
 const PORTRAIT_ARCHIVE_RELATIVE_PATH = join("Assets", "Heroes", "Portraits.xcr");
 const GRAPHICS_ARCHIVE_RELATIVE_PATH = join("Assets", "Graphics.xcr");
 
-export async function resolvePortraitArchivePath(explicitPath) {
-  return resolveGameArchivePath(explicitPath, PORTRAIT_ARCHIVE_RELATIVE_PATH, "Portraits.xcr");
+export async function resolvePortraitArchivePath(explicitPath, gameInstallDir) {
+  return resolveGameArchivePath(explicitPath, PORTRAIT_ARCHIVE_RELATIVE_PATH, "Portraits.xcr", gameInstallDir);
 }
 
-export async function resolveGraphicsArchivePath(explicitPath) {
-  return resolveGameArchivePath(explicitPath, GRAPHICS_ARCHIVE_RELATIVE_PATH, "Graphics.xcr");
+export async function resolveGraphicsArchivePath(explicitPath, gameInstallDir) {
+  return resolveGameArchivePath(explicitPath, GRAPHICS_ARCHIVE_RELATIVE_PATH, "Graphics.xcr", gameInstallDir);
 }
 
 export async function resolveHeroDataArchivePath(explicitPath) {
   const explicit = await resolveHeroDataPathInput(explicitPath);
   if (explicit) return explicit;
+  if (hasPathValue(explicitPath)) throw new Error(`Could not locate HeroData.xcr at ${explicitPath}.`);
 
   const fromEnv = await resolveHeroDataPathInput(process.env.WBC3_HERO_DATA_PATH);
   if (fromEnv) return fromEnv;
+  if (hasPathValue(process.env.WBC3_HERO_DATA_PATH)) {
+    throw new Error(`Could not locate HeroData.xcr at ${process.env.WBC3_HERO_DATA_PATH}.`);
+  }
 
   const candidates = (await commonDocumentRoots()).map((root) => join(root, HERO_DATA_RELATIVE_PATH));
 
@@ -40,20 +44,28 @@ export function portableArchiveLabel(filePath, fallbackName) {
   return basename(filePath || fallbackName || "unknown");
 }
 
-async function resolveGameArchivePath(explicitPath, relativeArchivePath, archiveName) {
+async function resolveGameArchivePath(explicitPath, relativeArchivePath, archiveName, gameInstallDir) {
   const explicit = await resolveExplicitPath(explicitPath, relativeArchivePath);
   if (explicit) return explicit;
+  if (hasPathValue(explicitPath)) throw new Error(`Could not locate ${archiveName} at ${explicitPath}.`);
 
-  const gameDir = await resolveGameInstallDir();
+  const gameDir = await resolveGameInstallDir(gameInstallDir);
   const archivePath = join(gameDir, relativeArchivePath);
   if (await isFile(archivePath)) return archivePath;
 
   throw new Error(`Could not locate ${archiveName} under ${gameDir}. Pass the archive path as the first argument.`);
 }
 
-export async function resolveGameInstallDir() {
-  const explicit = await firstExistingDirectory([process.env.WBC3_INSTALL_DIR, process.env.WBC3_GAME_DIR]);
+export async function resolveGameInstallDir(explicitPath) {
+  const explicit = await firstExistingDirectory([explicitPath]);
   if (explicit) return explicit;
+  if (hasPathValue(explicitPath)) throw new Error(`Could not locate the Warlords Battlecry III install directory at ${explicitPath}.`);
+
+  const fromEnv = await firstExistingDirectory([process.env.WBC3_INSTALL_DIR, process.env.WBC3_GAME_DIR]);
+  if (fromEnv) return fromEnv;
+  if (hasPathValue(process.env.WBC3_INSTALL_DIR) || hasPathValue(process.env.WBC3_GAME_DIR)) {
+    throw new Error("Could not locate the Warlords Battlecry III install directory from WBC3_INSTALL_DIR or WBC3_GAME_DIR.");
+  }
 
   const steamDir = await findGameInstallFromSteamLibraries();
   if (steamDir) return steamDir;
@@ -303,6 +315,10 @@ function uniquePaths(paths) {
     unique.push(resolved);
   }
   return unique;
+}
+
+function hasPathValue(value) {
+  return typeof value === "string" && value.trim().length > 0;
 }
 
 async function firstExistingFile(candidates) {

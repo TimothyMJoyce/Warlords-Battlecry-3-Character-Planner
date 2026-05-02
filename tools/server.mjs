@@ -8,6 +8,7 @@ import {
   resolvePortraitArchivePath,
 } from "./wbc3-paths.mjs";
 import { importHeroBuildsFromHeroData } from "./hero-data-reader.mjs";
+import { readLocalPathSettings, writeLocalPathSettings } from "./local-settings.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const dist = resolve(root, "dist");
@@ -28,7 +29,7 @@ const server = createServer(async (request, response) => {
     const url = new URL(request.url ?? "/", `http://${host}`);
 
     if (url.pathname.startsWith("/api/")) {
-      await handleApiRequest(url, response);
+      await handleApiRequest(request, url, response);
       return;
     }
 
@@ -50,9 +51,21 @@ const server = createServer(async (request, response) => {
   }
 });
 
-async function handleApiRequest(url, response) {
+async function handleApiRequest(request, url, response) {
   if (url.pathname === "/api/local/paths") {
     const body = await getLocalPathStatus();
+    sendJson(response, 200, body);
+    return;
+  }
+
+  if (url.pathname === "/api/local/settings") {
+    if (request.method === "POST") {
+      const body = await saveLocalSettings(await readJsonBody(request));
+      sendJson(response, body.ok ? 200 : 400, body);
+      return;
+    }
+
+    const body = await getLocalSettings();
     sendJson(response, 200, body);
     return;
   }
@@ -68,7 +81,8 @@ async function handleApiRequest(url, response) {
 
 async function getLocalHeroes() {
   try {
-    const heroDataPath = await resolveHeroDataArchivePath();
+    const settings = await readLocalPathSettings();
+    const heroDataPath = await resolveHeroDataArchivePath(settings.heroDataPath);
     const { builds, metadata } = await importHeroBuildsFromHeroData(heroDataPath);
     return {
       ok: true,
@@ -91,34 +105,87 @@ async function getLocalHeroes() {
 }
 
 async function getLocalPathStatus() {
+  const settings = await readLocalPathSettings();
   const entries = await Promise.all([
-    inspectLocalPath("Game Install", () => resolveGameInstallDir()),
-    inspectLocalPath("HeroData", () => resolveHeroDataArchivePath()),
-    inspectLocalPath("Portraits", () => resolvePortraitArchivePath()),
-    inspectLocalPath("Graphics", () => resolveGraphicsArchivePath()),
+    inspectLocalPath("Game Install", () => resolveGameInstallDir(settings.gameInstallDir), settings.gameInstallDir),
+    inspectLocalPath("HeroData", () => resolveHeroDataArchivePath(settings.heroDataPath), settings.heroDataPath),
+    inspectLocalPath(
+      "Portraits",
+      () => resolvePortraitArchivePath(settings.portraitsPath, settings.gameInstallDir),
+      settings.portraitsPath,
+    ),
+    inspectLocalPath(
+      "Graphics",
+      () => resolveGraphicsArchivePath(settings.graphicsPath, settings.gameInstallDir),
+      settings.graphicsPath,
+    ),
   ]);
 
   return {
     desktopMode: true,
     generatedAt: new Date().toISOString(),
+    settings,
     paths: entries,
   };
 }
 
-async function inspectLocalPath(label, resolver) {
+async function getLocalSettings() {
+  return {
+    ok: true,
+    settings: await readLocalPathSettings(),
+  };
+}
+
+async function saveLocalSettings(value) {
+  try {
+    const settings = await writeLocalPathSettings(value);
+    const pathStatus = await getLocalPathStatus();
+    const heroImport = await getLocalHeroes();
+    return {
+      ok: true,
+      settings,
+      pathStatus,
+      heroImport,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+async function inspectLocalPath(label, resolver, override = "") {
   try {
     return {
       label,
       ok: true,
       path: await resolver(),
+      override: Boolean(override),
     };
   } catch (error) {
     return {
       label,
       ok: false,
+      override: Boolean(override),
       error: error instanceof Error ? error.message : String(error),
     };
   }
+}
+
+async function readJsonBody(request) {
+  if (request.method !== "POST") return {};
+
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of request) {
+    size += chunk.length;
+    if (size > 64 * 1024) throw new Error("Settings payload is too large.");
+    chunks.push(chunk);
+  }
+
+  const text = Buffer.concat(chunks).toString("utf8").trim();
+  return text ? JSON.parse(text) : {};
 }
 
 function sendJson(response, statusCode, body) {

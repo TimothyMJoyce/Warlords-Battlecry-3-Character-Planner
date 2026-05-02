@@ -89,12 +89,13 @@ h2 {
   gap: 10px;
 }
 
-.saved-menu {
+.saved-menu,
+.settings-menu {
   position: relative;
 }
 
 .saved-menu summary,
-.local-files-menu summary {
+.settings-menu summary {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -108,12 +109,12 @@ h2 {
 }
 
 .saved-menu summary::-webkit-details-marker,
-.local-files-menu summary::-webkit-details-marker {
+.settings-menu summary::-webkit-details-marker {
   display: none;
 }
 
 .saved-menu summary::after,
-.local-files-menu summary::after {
+.settings-menu summary::after {
   content: "";
   width: 0;
   height: 0;
@@ -123,24 +124,24 @@ h2 {
 }
 
 .saved-menu[open] summary,
-.local-files-menu[open] summary {
+.settings-menu[open] summary {
   border-color: var(--blue);
   background: #f2f8fa;
 }
 
 .saved-menu[open] summary::after,
-.local-files-menu[open] summary::after {
+.settings-menu[open] summary::after {
   transform: rotate(180deg);
 }
 
 .saved-menu summary span,
-.local-files-menu summary span {
+.settings-menu summary span {
   color: var(--ink);
   font-weight: 800;
 }
 
 .saved-menu summary strong,
-.local-files-menu summary strong {
+.settings-menu summary strong {
   display: inline-grid;
   place-items: center;
   min-width: 22px;
@@ -151,11 +152,7 @@ h2 {
   font-size: 0.78rem;
 }
 
-.local-files-menu {
-  position: relative;
-}
-
-.local-files-panel {
+.settings-panel {
   position: absolute;
   z-index: 30;
   top: calc(100% + 8px);
@@ -168,51 +165,95 @@ h2 {
   box-shadow: 0 18px 42px rgba(20, 32, 31, 0.2);
 }
 
-.local-files-panel h3 {
+.settings-panel h3 {
   margin: 0 0 10px;
   color: var(--green);
   font-size: 0.92rem;
 }
 
-.local-files-list {
+.settings-panel {
+  width: min(560px, calc(100vw - 32px));
+}
+
+.settings-menu.is-missing summary strong {
+  background: var(--red);
+}
+
+.settings-form {
   display: grid;
-  gap: 8px;
+  gap: 10px;
 }
 
-.local-file-row {
+.settings-field {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 4px 10px;
-  border-left: 4px solid var(--green);
-  border-radius: 6px;
-  padding: 8px 10px;
-  background: #f8fbfb;
+  gap: 5px;
 }
 
-.local-file-row.is-missing {
-  border-left-color: var(--red);
-  background: #fff6f5;
-}
-
-.local-file-row span,
-.local-file-row small {
+.settings-field span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   color: var(--muted);
-  font-size: 0.82rem;
+  font-size: 0.8rem;
+  font-weight: 800;
 }
 
-.local-file-row strong {
-  color: var(--blue);
-  font-size: 0.88rem;
+.settings-field span strong {
+  color: var(--ink);
 }
 
-.local-file-row.is-missing strong {
+.settings-field span em {
+  color: var(--green);
+  font-style: normal;
+  white-space: nowrap;
+}
+
+.settings-field.is-missing span em {
   color: var(--red);
 }
 
-.local-file-row small {
-  grid-column: 1 / -1;
-  overflow-wrap: anywhere;
+.settings-field input {
+  padding: 8px 10px;
+}
+
+.settings-field.is-valid input {
+  border-color: var(--green);
+  background: #f3faf6;
+}
+
+.settings-field.is-missing input {
+  border-color: var(--red);
+  background: #fff6f5;
+}
+
+.settings-field small {
+  color: var(--muted);
+  font-size: 0.76rem;
   line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.settings-field.is-missing small {
+  color: var(--red);
+}
+
+.settings-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.settings-actions button {
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-weight: 800;
+}
+
+.settings-status {
+  margin: 0;
+  color: var(--blue);
+  font-size: 0.84rem;
 }
 
 .saved-menu-panel {
@@ -951,7 +992,7 @@ output {
     left: 0;
   }
 
-  .local-files-panel {
+  .settings-panel {
     right: auto;
     left: 0;
   }
