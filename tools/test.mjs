@@ -310,5 +310,13 @@ assert.equal(getEffectiveCommandRadius(25), 19);
 assert.equal(getConversionTime(5), 45);
 assert.equal(getConversionTime(99), 5);
 assert.equal(getConversionRange(31), 13);
+assert.equal(
+  calculateHeroSummary({
+    ...baseBuild,
+    level: 20,
+    statAllocation: { strength: 0, dexterity: 20, intelligence: 0, charisma: 0 },
+  }).conversionTime,
+  calculateHeroSummary({ ...baseBuild, level: 20 }).conversionTime,
+);
 
 console.log("All verified planner tests passed.");

@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { extname, join, normalize, resolve } from "node:path";
+import { extname, isAbsolute, relative, resolve } from "node:path";
 import {
   resolveGameInstallDir,
   resolveGraphicsArchivePath,
@@ -12,7 +12,11 @@ import { readLocalPathSettings, writeLocalPathSettings } from "./local-settings.
 
 const root = resolve(import.meta.dirname, "..");
 const dist = resolve(root, "dist");
-const startingPort = Number(process.env.PORT || 5173);
+const requestedPort = Number(process.env.PORT || 5173);
+const startingPort =
+  Number.isInteger(requestedPort) && requestedPort >= 1 && requestedPort <= 65535 ? requestedPort : 5173;
+const staticRoots = [resolve(root, "src")];
+const staticFiles = new Set([resolve(root, "index.html"), resolve(root, "manifest.webmanifest")]);
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -29,14 +33,20 @@ const server = createServer(async (request, response) => {
     const url = new URL(request.url ?? "/", `http://${host}`);
 
     if (url.pathname.startsWith("/api/")) {
-      await handleApiRequest(request, url, response);
+      try {
+        await handleApiRequest(request, url, response);
+      } catch (error) {
+        const statusCode = error instanceof HttpError ? error.statusCode : 500;
+        sendJson(response, statusCode, {
+          ok: false,
+          error: error instanceof Error ? error.message : "Request failed.",
+        });
+      }
       return;
     }
 
-    const requested = url.pathname === "/" ? "/index.html" : url.pathname;
-    const filePath = normalize(join(root, requested));
-
-    if (!filePath.startsWith(root)) {
+    const filePath = resolveStaticFilePath(url.pathname);
+    if (!filePath) {
       response.writeHead(403);
       response.end("Forbidden");
       return;
@@ -50,6 +60,35 @@ const server = createServer(async (request, response) => {
     response.end("Not found");
   }
 });
+
+class HttpError extends Error {
+  constructor(statusCode, message) {
+    super(message);
+    this.statusCode = statusCode;
+  }
+}
+
+function resolveStaticFilePath(pathname) {
+  let decodedPath;
+  try {
+    decodedPath = decodeURIComponent(pathname);
+  } catch {
+    return null;
+  }
+
+  if (decodedPath.includes("\0")) return null;
+
+  const requested = decodedPath === "/" ? "index.html" : decodedPath.replace(/^[/\\]+/, "");
+  const filePath = resolve(root, requested);
+  if (staticFiles.has(filePath)) return filePath;
+  if (staticRoots.some((staticRoot) => isPathInside(staticRoot, filePath))) return filePath;
+  return null;
+}
+
+function isPathInside(parent, child) {
+  const pathBetween = relative(parent, child);
+  return pathBetween !== "" && !pathBetween.startsWith("..") && !isAbsolute(pathBetween);
+}
 
 async function handleApiRequest(request, url, response) {
   if (url.pathname === "/api/local/paths") {
@@ -180,12 +219,16 @@ async function readJsonBody(request) {
   let size = 0;
   for await (const chunk of request) {
     size += chunk.length;
-    if (size > 64 * 1024) throw new Error("Settings payload is too large.");
+    if (size > 64 * 1024) throw new HttpError(413, "Settings payload is too large.");
     chunks.push(chunk);
   }
 
   const text = Buffer.concat(chunks).toString("utf8").trim();
-  return text ? JSON.parse(text) : {};
+  try {
+    return text ? JSON.parse(text) : {};
+  } catch {
+    throw new HttpError(400, "Invalid JSON request body.");
+  }
 }
 
 function sendJson(response, statusCode, body) {

@@ -273,10 +273,10 @@ h2 {
 
 .builder-grid {
   display: grid;
-  grid-template-columns: 280px minmax(260px, 320px) minmax(260px, 340px) minmax(320px, 1fr);
+  grid-template-columns: 280px minmax(260px, 320px) minmax(220px, 300px) minmax(320px, 1fr);
   grid-template-areas:
-    "identity stats core defense"
-    "summary summary summary summary"
+    "identity stats strength dexterity"
+    "identity stats intelligence charisma"
     "skills skills skills skills";
   gap: 16px;
   align-items: stretch;
@@ -299,16 +299,20 @@ h2 {
   grid-area: stats;
 }
 
-.summary-panel {
-  grid-area: summary;
+.charisma-panel {
+  grid-area: charisma;
 }
 
-.core-panel {
-  grid-area: core;
+.strength-panel {
+  grid-area: strength;
 }
 
-.defense-panel {
-  grid-area: defense;
+.intelligence-panel {
+  grid-area: intelligence;
+}
+
+.dexterity-panel {
+  grid-area: dexterity;
 }
 
 .skills-panel {
@@ -702,13 +706,13 @@ output {
 
 .core-grid,
 .summary-grid,
-.defense-grid {
+.dexterity-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 8px;
 }
 
-.defense-grid {
+.dexterity-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
@@ -947,9 +951,9 @@ output {
     grid-template-columns: 1fr 1fr;
     grid-template-areas:
       "identity identity"
-      "stats core"
-      "defense defense"
-      "summary summary"
+      "stats strength"
+      "intelligence dexterity"
+      "charisma charisma"
       "skills skills";
   }
 
@@ -963,7 +967,7 @@ output {
   .topbar,
   .builder-grid,
   .skills-list,
-  .defense-grid {
+  .dexterity-grid {
     grid-template-columns: 1fr;
     display: grid;
   }
@@ -972,9 +976,10 @@ output {
     grid-template-areas:
       "identity"
       "stats"
-      "core"
-      "defense"
-      "summary"
+      "strength"
+      "intelligence"
+      "dexterity"
+      "charisma"
       "skills";
   }
 
@@ -998,9 +1003,10 @@ output {
   }
 
   .stats-panel,
-  .core-panel,
-  .defense-panel,
-  .summary-panel,
+  .strength-panel,
+  .intelligence-panel,
+  .dexterity-panel,
+  .charisma-panel,
   .skills-panel {
     grid-column: auto;
   }

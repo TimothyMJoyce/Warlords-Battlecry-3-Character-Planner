@@ -21,11 +21,12 @@ export async function importHeroBuildsFromHeroData(heroDataPath) {
   const index = parseHeroIndex(readResource(archive, dataResource));
   const builds = [];
 
-  for (const heroFileName of index.heroFileNames) {
+  for (let fileIndex = 0; fileIndex < index.heroFileNames.length; fileIndex += 1) {
+    const heroFileName = index.heroFileNames[fileIndex];
     const resource = resources.find((entry) => entry.name.toLowerCase() === heroFileName.toLowerCase());
     if (!resource) continue;
 
-    builds.push(parseHero(readResource(archive, resource), resource.name));
+    builds.push(parseHero(readResource(archive, resource), resource.name, fileIndex));
   }
 
   return {
@@ -50,6 +51,11 @@ function readXcrResources(buffer) {
   }
 
   const resourceCount = buffer.readInt32LE(20);
+  const resourceTableSize = archiveHeaderSize + resourceCount * resourceHeaderSize;
+  if (resourceCount < 0 || resourceTableSize > buffer.length) {
+    throw new Error("The archive resource table is incomplete.");
+  }
+
   const resources = [];
 
   for (let index = 0; index < resourceCount; index += 1) {
@@ -70,6 +76,12 @@ function readXcrResources(buffer) {
 }
 
 function readResource(buffer, resource) {
+  const start = resource.physicalOffset;
+  const end = resource.physicalOffset + resource.size;
+  if (start > buffer.length || end > buffer.length || end < start) {
+    throw new Error(`Resource ${resource.name} points outside the archive.`);
+  }
+
   const bytes = Buffer.from(buffer.subarray(resource.physicalOffset, resource.physicalOffset + resource.size));
   if (!resource.encrypted) return bytes;
 
@@ -81,7 +93,13 @@ function readResource(buffer, resource) {
 }
 
 function parseHeroIndex(bytes) {
+  if (bytes.length < 4) throw new Error("Hero index data is incomplete.");
   const heroCount = bytes.readInt32LE(0);
+  const maxHeroCount = Math.floor((bytes.length - 4) / 256);
+  if (heroCount < 0 || heroCount > maxHeroCount) {
+    throw new Error("Hero index count does not match the available data.");
+  }
+
   const heroFileNames = [];
 
   for (let index = 0; index < heroCount; index += 1) {
@@ -91,7 +109,15 @@ function parseHeroIndex(bytes) {
   return { heroCount, heroFileNames };
 }
 
-function parseHero(bytes, resourceName) {
+function parseHero(bytes, resourceName, fileIndex = 0) {
+  const resourceLabel = String(resourceName ?? "");
+  if (bytes.length < heroSkillOffset + maxHeroSkills * heroSkillSize) {
+    throw new Error(`Hero data is incomplete in ${resourceLabel || `entry ${fileIndex + 1}`}.`);
+  }
+
+  const rawName = readCString(bytes, 28, 20).trim();
+  const fallbackName = resourceLabel.replace(/\.[^.]+$/g, "").trim();
+  const heroName = rawName || fallbackName || `Imported Hero ${fileIndex + 1}`;
   const raceIndex = bytes.readUInt16LE(48);
   const classIndex = bytes.readUInt16LE(50);
   const raceId = races[raceIndex]?.id;
@@ -125,8 +151,8 @@ function parseHero(bytes, resourceName) {
   }
 
   return {
-    id: `herodata-${slug(readCString(bytes, 28, 20))}`,
-    name: readCString(bytes, 28, 20),
+    id: `herodata-${slug(`${heroName}-${resourceLabel || fileIndex}`) || `hero-${fileIndex + 1}`}`,
+    name: heroName,
     raceId,
     classId,
     level: bytes.readUInt16LE(52),
@@ -138,7 +164,7 @@ function parseHero(bytes, resourceName) {
       charisma: Math.max(0, actualStats.charisma - startingStats.charisma),
     },
     skillAllocation,
-    origin: `HeroData.xcr/${resourceName}`,
+    origin: `HeroData.xcr/${resourceLabel}`,
     imported: true,
     originalHero: {
       fileName: readCString(bytes, 8, 20),

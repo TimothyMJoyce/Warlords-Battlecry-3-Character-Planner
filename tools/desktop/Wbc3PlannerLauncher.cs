@@ -394,7 +394,7 @@ namespace Wbc3Planner
             try
             {
                 Process process = Process.GetProcessById(processId);
-                if (ProcessLooksLikePlannerServer(process))
+                if (ProcessLooksLikePlannerServer(process) && ProcessMatchesPidFile(process, pidFilePath))
                 {
                     process.Kill();
                     process.WaitForExit(3000);
@@ -633,6 +633,20 @@ namespace Wbc3Planner
             try
             {
                 return process.ProcessName.IndexOf("node", StringComparison.OrdinalIgnoreCase) >= 0;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static bool ProcessMatchesPidFile(Process process, string pidFilePath)
+        {
+            try
+            {
+                DateTime processStarted = process.StartTime.ToUniversalTime();
+                DateTime pidFileWritten = File.GetLastWriteTimeUtc(pidFilePath);
+                return processStarted <= pidFileWritten.AddSeconds(10);
             }
             catch
             {

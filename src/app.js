@@ -146,42 +146,35 @@ function render() {
           ${messages(statValidation.warnings)}
         </section>
 
-        <section class="panel core-panel">
+        <section class="panel strength-panel">
           <div class="panel-heading">
-            <h2>Core</h2>
+            <h2>Strength</h2>
           </div>
           <div class="core-grid">
             ${summaryItem("Life", summary.life, { secondary: formatRegen(summary.lifeRegen, "HP") })}
-            ${summaryItem("Mana", summary.mana, { secondary: formatRegen(summary.manaRegen, "MP") })}
-            ${summaryItem("Combat", summary.combat)}
-            ${summaryItem("Speed", summary.speed)}
             ${summaryItem("Damage", `${summary.damage} ${summary.damageType}`)}
-            ${summaryItem("Attack Speed", formatAttackSpeed(summary.attackSpeed))}
+            ${summaryItem("Combat", summary.combat)}
           </div>
         </section>
 
-        <section class="panel summary-panel">
+        <section class="panel intelligence-panel">
           <div class="panel-heading">
-            <h2>Utility</h2>
+            <h2>Intelligence</h2>
           </div>
-          <div class="summary-grid">
+          <div class="core-grid">
+            ${summaryItem("Mana", summary.mana, { secondary: formatRegen(summary.manaRegen, "MP") })}
             ${summaryItem("Spellcasting", summary.spellcasting)}
             ${summaryItem("Initial Troop XP", summary.initialTroopXp)}
-            ${moraleEffectsSection(summary)}
-            ${summaryItem("Merchant", formatMerchant(summary.merchant))}
-            ${summaryItem("Command Radius", summary.commandRadius)}
-            ${summaryItem("Command Score", summary.command)}
-            ${summaryItem("Group Limit", summary.groupLimit)}
-            ${summaryItem("Conversion Time", `${summary.conversionTime}s`)}
-            ${summaryItem("Retinue Slots", summary.retinueSlots)}
           </div>
         </section>
 
-        <section class="panel defense-panel">
+        <section class="panel dexterity-panel">
           <div class="panel-heading">
-            <h2>Defense</h2>
+            <h2>Dexterity</h2>
           </div>
-          <div class="defense-grid">
+          <div class="dexterity-grid">
+            ${summaryItem("Speed", summary.speed)}
+            ${summaryItem("Attack Speed", formatAttackSpeed(summary.attackSpeed))}
             ${defenseGroup("Armor", summary.armor, [
               ["Piercing", summary.damageResistances.piercing],
               ["Slashing", summary.damageResistances.slashing],
@@ -193,6 +186,18 @@ function render() {
               ["Electricity", summary.damageResistances.electricity, "electricity"],
               ["Magic", summary.damageResistances.magic, "magic"],
             ])}
+          </div>
+        </section>
+
+        <section class="panel charisma-panel">
+          <div class="panel-heading">
+            <h2>Charisma</h2>
+          </div>
+          <div class="summary-grid">
+            ${moraleEffectsSection(summary)}
+            ${summaryItem("Merchant", formatMerchant(summary.merchant))}
+            ${summaryItem("Command Radius", summary.commandRadius, { secondary: `Conversion Time ${summary.conversionTime}s` })}
+            ${summaryItem("Group Limit", summary.groupLimit)}
           </div>
         </section>
 
@@ -408,7 +413,7 @@ function createDefaultBuild() {
 }
 
 function option(id, label, selectedId) {
-  return `<option value="${id}" ${id === selectedId ? "selected" : ""}>${label}</option>`;
+  return `<option value="${escapeHtml(id)}" ${id === selectedId ? "selected" : ""}>${escapeHtml(label)}</option>`;
 }
 
 function portraitOption(id) {
@@ -456,8 +461,8 @@ function skillRow(unlock, skillValidation, effects = []) {
   return `
     <article class="skill-row ${locked} ${hasEffects}">
       <div class="skill-info">
-        <strong>${skill?.displayName ?? unlock.skillId}</strong>
-        <span>${originText} / ${unlockText}</span>
+        <strong>${escapeHtml(skill?.displayName ?? unlock.skillId)}</strong>
+        <span>${escapeHtml(originText)} / ${escapeHtml(unlockText)}</span>
       </div>
       ${skillEffectList(effects)}
       <div class="stepper">
@@ -505,9 +510,9 @@ function summaryItem(label, value, options = {}, iconKeyOverride = summaryIconKe
   const secondaryMarkup = secondary ? `<small class="summary-subvalue">${escapeHtml(secondary)}</small>` : "";
   return `
     <div class="summary-item ${tooltip ? "has-tooltip" : ""}" ${tooltip ? 'tabindex="0"' : ""}>
-      <span class="summary-label">${iconMarkup(iconKey)}${label}</span>
+      <span class="summary-label">${iconMarkup(iconKey)}${escapeHtml(label)}</span>
       <span class="summary-value">
-        <strong>${value}</strong>
+        <strong>${escapeHtml(value)}</strong>
         ${secondaryMarkup}
       </span>
       ${tooltipMarkup}
@@ -519,14 +524,14 @@ function defenseGroup(label, value, items, iconKey = summaryIconKeys[label]) {
   return `
     <div class="defense-group">
       <div class="defense-parent">
-        <span class="summary-label">${iconMarkup(iconKey)}${label}</span>
-        <strong>${value}</strong>
+        <span class="summary-label">${iconMarkup(iconKey)}${escapeHtml(label)}</span>
+        <strong>${escapeHtml(value)}</strong>
       </div>
       <div class="defense-sublist">
         ${items.map(([itemLabel, itemValue, itemIconKey = summaryIconKeys[itemLabel]]) => `
           <div class="defense-subrow">
-            <span class="summary-label">${iconMarkup(itemIconKey)}${itemLabel}</span>
-            <strong>${itemValue}</strong>
+            <span class="summary-label">${iconMarkup(itemIconKey)}${escapeHtml(itemLabel)}</span>
+            <strong>${escapeHtml(itemValue)}</strong>
           </div>
         `).join("")}
       </div>
@@ -553,8 +558,8 @@ function moraleEffectsSection(summary) {
 function moraleEffectRow(label, value) {
   return `
     <div class="morale-effect-row">
-      <span>${label}</span>
-      <strong>${value}</strong>
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
     </div>
   `;
 }
@@ -643,7 +648,7 @@ function settingsField(label, name, value = "", entry = null) {
 
 function messages(items) {
   if (!items.length) return "";
-  return `<div class="messages">${items.map((item) => `<p>${item}</p>`).join("")}</div>`;
+  return `<div class="messages">${items.map((item) => `<p>${escapeHtml(item)}</p>`).join("")}</div>`;
 }
 
 function formatXp(value) {
@@ -682,18 +687,19 @@ function formatMerchant(value) {
 }
 
 function loadSavedBuilds() {
-  const imported = importedHeroBuilds.map(cloneSavedBuild);
+  const imported = sanitizeSavedBuilds(importedHeroBuilds, "imported-recovered");
   let stored = [];
 
   try {
-    stored = JSON.parse(window.localStorage.getItem(savedBuildStorageKey) ?? "[]");
+    const parsed = JSON.parse(window.localStorage.getItem(savedBuildStorageKey) ?? "[]");
+    stored = Array.isArray(parsed) ? parsed : [];
   } catch {
     stored = [];
   }
 
   const merged = new Map();
   const importedIds = new Set(imported.map((savedBuild) => savedBuild.id));
-  for (const savedBuild of stored.map(cloneSavedBuild)) {
+  for (const savedBuild of sanitizeSavedBuilds(stored, "saved-recovered")) {
     if (savedBuild.imported && !importedIds.has(savedBuild.id)) continue;
     if (!savedBuild.imported) merged.set(savedBuild.id, savedBuild);
   }
@@ -704,8 +710,8 @@ function loadSavedBuilds() {
 }
 
 function mergeImportedHeroBuilds(builds, metadata) {
-  const imported = Array.isArray(builds) ? builds.map(cloneSavedBuild) : [];
-  const localSaved = savedBuilds.filter((savedBuild) => !savedBuild.imported);
+  const imported = sanitizeSavedBuilds(builds, "imported-recovered");
+  const localSaved = savedBuilds.filter((savedBuild) => savedBuild && !savedBuild.imported);
   const merged = new Map();
 
   for (const savedBuild of localSaved) merged.set(savedBuild.id, savedBuild);
@@ -746,6 +752,7 @@ function saveCurrentBuild() {
     imported: false,
     origin: "Planner",
   });
+  if (!savedBuild) return;
 
   savedBuilds = [savedBuild, ...savedBuilds];
   activeSavedBuildId = savedBuild.id;
@@ -773,20 +780,31 @@ function loadSavedBuild(id) {
 
 function persistSavedBuilds(value) {
   try {
-    window.localStorage.setItem(savedBuildStorageKey, JSON.stringify(value));
+    window.localStorage.setItem(savedBuildStorageKey, JSON.stringify(sanitizeSavedBuilds(value, "saved-recovered")));
   } catch {
     // Local storage can be unavailable in some embedded browser modes.
   }
 }
 
-function cloneSavedBuild(value) {
+function sanitizeSavedBuilds(value, fallbackPrefix) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry, index) => cloneSavedBuild(entry, `${fallbackPrefix}-${index + 1}`))
+    .filter(Boolean);
+}
+
+function cloneSavedBuild(value, fallbackId = "") {
+  if (!value || typeof value !== "object") return null;
+  const fallbackBuild = createDefaultBuild();
+  const raceId = races.some((entry) => entry.id === value.raceId) ? String(value.raceId) : fallbackBuild.raceId;
+  const classId = heroClasses.some((entry) => entry.id === value.classId) ? String(value.classId) : fallbackBuild.classId;
   return {
-    id: String(value.id),
+    id: String(value.id || fallbackId || `saved-${Date.now()}`),
     name: String(value.name || "Unnamed Build"),
-    raceId: String(value.raceId),
-    classId: String(value.classId),
+    raceId,
+    classId,
     level: clampLevel(value.level),
-    portraitId: Number.isFinite(Number(value.portraitId)) ? Number(value.portraitId) : getDefaultPortraitId(value.raceId),
+    portraitId: Number.isFinite(Number(value.portraitId)) ? Number(value.portraitId) : getDefaultPortraitId(raceId),
     statAllocation: normalizeStatAllocation(value.statAllocation),
     skillAllocation: normalizeSkillAllocation(value.skillAllocation),
     imported: Boolean(value.imported),
