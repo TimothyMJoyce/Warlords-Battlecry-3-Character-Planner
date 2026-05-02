@@ -28,6 +28,8 @@ const statLabels = {
 
 const savedBuildStorageKey = "wbc3-character-planner.savedBuilds.v1";
 
+document.title = "Warlords Battlecry 3 - Character Planner";
+
 let build = createDefaultBuild();
 
 let savedBuilds = loadSavedBuilds();
@@ -50,10 +52,6 @@ function render() {
   app.innerHTML = `
     <main class="shell">
       <header class="topbar">
-        <div>
-          <p class="eyebrow">Warlords Battlecry III</p>
-          <h1>Character Planner</h1>
-        </div>
         <div class="top-actions">
           <div class="rules-pill">Rules: WBC3 10323</div>
           ${localPathStatus ? localFilesMenu(localPathStatus) : ""}

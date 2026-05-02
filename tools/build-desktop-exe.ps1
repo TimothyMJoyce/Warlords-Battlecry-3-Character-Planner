@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
   [string]$OutPath,
-  [string]$NodePath
+  [string]$NodePath,
+  [string]$IconPath
 )
 
 $ErrorActionPreference = "Stop"
@@ -13,6 +14,10 @@ $PayloadZip = Join-Path $BuildRoot "planner-payload.zip"
 
 if ([string]::IsNullOrWhiteSpace($OutPath)) {
   $OutPath = Join-Path $Root "WBC3 Planner.exe"
+}
+
+if ([string]::IsNullOrWhiteSpace($IconPath)) {
+  $IconPath = Join-Path $BuildRoot "WBC3 Planner Cog Icon.ico"
 }
 
 function Join-IfRoot {
@@ -139,9 +144,14 @@ $arguments = @(
   "/reference:System.IO.Compression.dll",
   "/reference:System.IO.Compression.FileSystem.dll",
   "/resource:$PayloadZip,Wbc3Planner.Payload.zip",
-  "/out:$OutPath",
-  $LauncherCode
+  "/out:$OutPath"
 )
+
+if (Test-Path -LiteralPath $IconPath) {
+  $arguments += "/win32icon:$IconPath"
+}
+
+$arguments += $LauncherCode
 
 & $Compiler @arguments
 if ($LASTEXITCODE -ne 0) {
@@ -150,3 +160,6 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host "Built portable desktop launcher at $OutPath"
 Write-Host "Bundled payload: $PayloadZip"
+if (Test-Path -LiteralPath $IconPath) {
+  Write-Host "Launcher icon: $IconPath"
+}

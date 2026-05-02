@@ -58,30 +58,15 @@ button:disabled {
 
 .topbar {
   display: flex;
-  align-items: end;
-  justify-content: space-between;
+  align-items: center;
+  justify-content: flex-end;
   gap: 16px;
-  margin-bottom: 20px;
+  margin-bottom: 14px;
 }
 
-.eyebrow {
-  margin: 0 0 4px;
-  color: var(--gold);
-  font-size: 0.78rem;
-  font-weight: 800;
-  letter-spacing: 0;
-  text-transform: uppercase;
-}
-
-h1,
 h2 {
   margin: 0;
   letter-spacing: 0;
-}
-
-h1 {
-  font-size: clamp(2rem, 5vw, 3.7rem);
-  line-height: 1;
 }
 
 h2 {
