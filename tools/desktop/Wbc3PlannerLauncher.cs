@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.Management;
+using System.IO.Compression;
+using System.Reflection;
+using System.Security.Cryptography;
 using System.Threading;
 using System.Windows.Forms;
 
@@ -25,17 +27,19 @@ namespace Wbc3Planner
                         "Options:\n" +
                         "  --refresh    Re-import HeroData and extracted assets before opening.\n" +
                         "  --stop       Stop the background planner server.\n" +
-                        "  --port 5173  Start on a specific local port.",
+                        "  --port 5173  Start on a specific local port.\n" +
+                        "  --no-open    Start the server without opening a browser window.",
                         "WBC3 Planner",
                         MessageBoxButtons.OK,
                         MessageBoxIcon.Information);
                     return 0;
                 }
 
-                Launcher launcher = new Launcher(ProjectRoot.Find());
+                LauncherContext context = BundleRuntime.Resolve();
+                Launcher launcher = new Launcher(context.Root, context.NodePath);
                 if (options.Stop)
                 {
-                    launcher.StopExistingServer(true);
+                    launcher.StopExistingServer(!options.NoOpen);
                     return 0;
                 }
 
@@ -55,6 +59,7 @@ namespace Wbc3Planner
         public bool RefreshLocalData;
         public bool Stop;
         public bool ShowHelp;
+        public bool NoOpen;
         public int Port = 5173;
 
         public static LauncherOptions Parse(string[] args)
@@ -77,6 +82,10 @@ namespace Wbc3Planner
                 else if (lower == "--help" || lower == "/?" || lower == "-h")
                 {
                     options.ShowHelp = true;
+                }
+                else if (lower == "--no-open" || lower == "/no-open" || lower == "--no-browser" || lower == "/no-browser")
+                {
+                    options.NoOpen = true;
                 }
                 else if (lower == "--port" || lower == "/port")
                 {
@@ -101,6 +110,18 @@ namespace Wbc3Planner
             }
 
             return options;
+        }
+    }
+
+    internal sealed class LauncherContext
+    {
+        public readonly string Root;
+        public readonly string NodePath;
+
+        public LauncherContext(string root, string nodePath)
+        {
+            this.Root = root;
+            this.NodePath = nodePath;
         }
     }
 
@@ -149,16 +170,131 @@ namespace Wbc3Planner
         }
     }
 
+    internal static class BundleRuntime
+    {
+        private const string PayloadResourceName = "Wbc3Planner.Payload.zip";
+
+        public static LauncherContext Resolve()
+        {
+            byte[] payload = ReadPayload();
+            if (payload == null)
+            {
+                return new LauncherContext(ProjectRoot.Find(), null);
+            }
+
+            string fingerprint = ComputeFingerprint(payload);
+            string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            if (String.IsNullOrWhiteSpace(localAppData))
+            {
+                localAppData = Path.GetTempPath();
+            }
+
+            string bundleRoot = Path.Combine(localAppData, "WBC3 Planner", "bundle-" + fingerprint);
+            string readyFile = Path.Combine(bundleRoot, ".payload-ready");
+
+            if (!File.Exists(readyFile))
+            {
+                if (Directory.Exists(bundleRoot))
+                {
+                    Directory.Delete(bundleRoot, true);
+                }
+
+                Directory.CreateDirectory(bundleRoot);
+                ExtractPayload(payload, bundleRoot);
+                File.WriteAllText(readyFile, fingerprint);
+            }
+
+            string nodePath = Path.Combine(bundleRoot, "runtime", "node.exe");
+            string serverPath = Path.Combine(bundleRoot, "tools", "server.mjs");
+            if (!File.Exists(nodePath) || !File.Exists(serverPath))
+            {
+                throw new InvalidOperationException("The bundled planner payload is incomplete.");
+            }
+
+            return new LauncherContext(bundleRoot, nodePath);
+        }
+
+        private static byte[] ReadPayload()
+        {
+            Assembly assembly = Assembly.GetExecutingAssembly();
+            using (Stream stream = assembly.GetManifestResourceStream(PayloadResourceName))
+            {
+                if (stream == null)
+                {
+                    return null;
+                }
+
+                using (MemoryStream memory = new MemoryStream())
+                {
+                    stream.CopyTo(memory);
+                    return memory.ToArray();
+                }
+            }
+        }
+
+        private static string ComputeFingerprint(byte[] payload)
+        {
+            using (SHA256 sha = SHA256.Create())
+            {
+                byte[] hash = sha.ComputeHash(payload);
+                return BitConverter.ToString(hash).Replace("-", "").Substring(0, 16).ToLowerInvariant();
+            }
+        }
+
+        private static void ExtractPayload(byte[] payload, string destination)
+        {
+            string destinationRoot = Path.GetFullPath(destination);
+            if (!destinationRoot.EndsWith(Path.DirectorySeparatorChar.ToString()))
+            {
+                destinationRoot += Path.DirectorySeparatorChar;
+            }
+
+            using (MemoryStream memory = new MemoryStream(payload))
+            using (ZipArchive archive = new ZipArchive(memory, ZipArchiveMode.Read))
+            {
+                foreach (ZipArchiveEntry entry in archive.Entries)
+                {
+                    string normalizedName = entry.FullName.Replace('/', Path.DirectorySeparatorChar);
+                    string targetPath = Path.GetFullPath(Path.Combine(destinationRoot, normalizedName));
+                    if (!targetPath.StartsWith(destinationRoot, StringComparison.OrdinalIgnoreCase))
+                    {
+                        throw new InvalidOperationException("Refusing to extract an unsafe bundled path.");
+                    }
+
+                    if (String.IsNullOrEmpty(entry.Name))
+                    {
+                        Directory.CreateDirectory(targetPath);
+                        continue;
+                    }
+
+                    string targetDirectory = Path.GetDirectoryName(targetPath);
+                    if (!String.IsNullOrWhiteSpace(targetDirectory))
+                    {
+                        Directory.CreateDirectory(targetDirectory);
+                    }
+
+                    using (Stream input = entry.Open())
+                    using (FileStream output = File.Create(targetPath))
+                    {
+                        input.CopyTo(output);
+                    }
+                }
+            }
+        }
+    }
+
     internal sealed class Launcher
     {
         private readonly string root;
+        private readonly string bundledNode;
         private readonly string dist;
         private readonly string serverUrlFile;
         private readonly string pidFile;
 
-        public Launcher(string root)
+        public Launcher(string root, string bundledNode)
         {
             this.root = root;
+            this.bundledNode = bundledNode;
             this.dist = Path.Combine(root, "dist");
             this.serverUrlFile = Path.Combine(this.dist, "server-url.txt");
             this.pidFile = Path.Combine(this.dist, "server.pid");
@@ -169,7 +305,7 @@ namespace Wbc3Planner
             Directory.CreateDirectory(this.dist);
             DeleteIfExists(this.serverUrlFile);
 
-            string node = FindNode();
+            string node = this.bundledNode ?? FindNode();
 
             if (options.RefreshLocalData)
             {
@@ -199,7 +335,10 @@ namespace Wbc3Planner
             File.WriteAllText(this.pidFile, server.Id.ToString());
 
             string url = WaitForServerUrl(server);
-            OpenPlannerWindow(url);
+            if (!options.NoOpen)
+            {
+                OpenPlannerWindow(url);
+            }
         }
 
         public void StopExistingServer(bool showMessage)
@@ -230,10 +369,11 @@ namespace Wbc3Planner
             bool stopped = false;
             try
             {
-                if (IsPlannerServerProcess(processId))
+                Process process = Process.GetProcessById(processId);
+                if (ProcessLooksLikePlannerServer(process))
                 {
-                    Process process = Process.GetProcessById(processId);
                     process.Kill();
+                    process.WaitForExit(3000);
                     stopped = true;
                 }
             }
@@ -428,28 +568,16 @@ namespace Wbc3Planner
             Process.Start(browserStart);
         }
 
-        private static bool IsPlannerServerProcess(int processId)
+        private static bool ProcessLooksLikePlannerServer(Process process)
         {
             try
             {
-                string query = "SELECT CommandLine FROM Win32_Process WHERE ProcessId = " + processId.ToString();
-                using (ManagementObjectSearcher searcher = new ManagementObjectSearcher(query))
-                using (ManagementObjectCollection results = searcher.Get())
-                {
-                    foreach (ManagementObject result in results)
-                    {
-                        string commandLine = Convert.ToString(result["CommandLine"]) ?? "";
-                        return commandLine.IndexOf("server.mjs", StringComparison.OrdinalIgnoreCase) >= 0 &&
-                               commandLine.IndexOf("tools", StringComparison.OrdinalIgnoreCase) >= 0;
-                    }
-                }
+                return process.ProcessName.IndexOf("node", StringComparison.OrdinalIgnoreCase) >= 0;
             }
             catch
             {
                 return false;
             }
-
-            return false;
         }
 
         private static void DeleteIfExists(string path)

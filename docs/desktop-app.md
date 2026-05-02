@@ -1,6 +1,6 @@
 # Desktop App Notes
 
-The first desktop setup uses the existing dependency-free Node server as a local backend and opens the planner in an Edge app window.
+The desktop setup bundles the dependency-free Node server and planner files into a portable Windows launcher that opens the planner in an Edge app window.
 
 ## Why This Shape
 
@@ -11,8 +11,9 @@ The first desktop setup uses the existing dependency-free Node server as a local
 
 ## Files
 
-- `WBC3 Planner.exe`: native Windows launcher built from `tools/desktop/Wbc3PlannerLauncher.cs`.
-- `tools/build-desktop-exe.ps1`: builds the launcher EXE with the Windows .NET Framework compiler.
+- `build\WBC3 Planner.exe`: portable Windows launcher built from `tools/desktop/Wbc3PlannerLauncher.cs`.
+- `Build-WBC3-Planner.bat`: builds the portable EXE into `build\`.
+- `tools/build-desktop-exe.ps1`: assembles the bundled payload and builds the launcher EXE with the Windows .NET Framework compiler.
 - `Start-WBC3-Planner.ps1`: starts the local server and opens the app window.
 - `Stop-WBC3-Planner.ps1`: stops a server started by the launcher.
 - `tools/server.mjs`: serves the app and exposes local-only read APIs.
@@ -31,7 +32,7 @@ This endpoint is read-only. It does not modify HeroData.
 
 ## Future EXE Path
 
-The current EXE is a launcher, not a bundled installer. It expects the planner files to be next to it and Node.js to be available. If the planner needs an installer or single bundled application, use the same server and UI behind either:
+The current EXE is portable but not an installer. It extracts its bundled runtime to the current user's local app-data cache. If the planner needs a conventional installer, use the same server and UI behind either:
 
 - Tauri, for a smaller Windows desktop app.
 - Electron, for the simplest web-to-desktop packaging path.

@@ -558,6 +558,10 @@ input {
   margin-top: 9px;
 }
 
+.import-note.is-error {
+  color: var(--red);
+}
+
 .stat-grid {
   display: grid;
   gap: 10px;

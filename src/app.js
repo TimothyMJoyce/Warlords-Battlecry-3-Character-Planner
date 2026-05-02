@@ -33,6 +33,8 @@ let build = createDefaultBuild();
 let savedBuilds = loadSavedBuilds();
 let activeSavedBuildId = null;
 let localPathStatus = null;
+let importedBuildMetadata = importedHeroBuildMetadata;
+let localHeroImportError = "";
 
 const app = document.querySelector("#app");
 
@@ -68,7 +70,8 @@ function render() {
               <div class="saved-list">
                 ${savedBuilds.length ? savedBuilds.map((savedBuild) => savedBuildRow(savedBuild)).join("") : `<p class="empty-state">No saved builds yet.</p>`}
               </div>
-              ${importedHeroBuildMetadata.heroCount ? `<p class="import-note">${importedHeroBuildMetadata.heroCount} imported from HeroData.xcr</p>` : ""}
+              ${importedBuildMetadata.heroCount ? `<p class="import-note">${importedBuildMetadata.heroCount} imported from HeroData.xcr</p>` : ""}
+              ${localHeroImportError ? `<p class="import-note is-error">${escapeHtml(localHeroImportError)}</p>` : ""}
             </div>
           </details>
         </div>
@@ -666,6 +669,30 @@ function loadSavedBuilds() {
   return result;
 }
 
+function mergeImportedHeroBuilds(builds, metadata) {
+  const imported = Array.isArray(builds) ? builds.map(cloneSavedBuild) : [];
+  const localSaved = savedBuilds.filter((savedBuild) => !savedBuild.imported);
+  const merged = new Map();
+
+  for (const savedBuild of localSaved) merged.set(savedBuild.id, savedBuild);
+  for (const savedBuild of imported) merged.set(savedBuild.id, savedBuild);
+
+  savedBuilds = Array.from(merged.values());
+  importedBuildMetadata = metadata ?? {
+    path: "",
+    archive: "",
+    resourceCount: 0,
+    heroCount: imported.length,
+  };
+
+  if (!savedBuilds.some((savedBuild) => savedBuild.id === activeSavedBuildId)) {
+    activeSavedBuildId = null;
+  }
+
+  persistSavedBuilds(savedBuilds);
+  render();
+}
+
 function saveCurrentBuild() {
   const defaultName = getCurrentBuildName();
   const name = window.prompt("Save build as", defaultName);
@@ -762,6 +789,7 @@ function escapeHtml(value) {
 
 render();
 loadLocalPathStatus();
+loadLocalHeroBuilds();
 
 async function loadLocalPathStatus() {
   try {
@@ -769,6 +797,23 @@ async function loadLocalPathStatus() {
     if (!response.ok) return;
     localPathStatus = await response.json();
     render();
+  } catch {
+    // Static web hosting does not provide the local desktop API.
+  }
+}
+
+async function loadLocalHeroBuilds() {
+  try {
+    const response = await fetch("/api/local/heroes", { cache: "no-store" });
+    const body = await response.json().catch(() => null);
+    if (!response.ok || !body?.ok) {
+      localHeroImportError = body?.error ? `Hero import failed: ${body.error}` : "";
+      render();
+      return;
+    }
+
+    localHeroImportError = "";
+    mergeImportedHeroBuilds(body.builds, body.metadata);
   } catch {
     // Static web hosting does not provide the local desktop API.
   }

@@ -59,14 +59,14 @@ export async function resolveGameInstallDir() {
   const explicit = await firstExistingDirectory([process.env.WBC3_INSTALL_DIR]);
   if (explicit) return explicit;
 
-  const uninstallDir = await findGameInstallFromUninstallRegistry();
-  if (uninstallDir) return uninstallDir;
-
   const steamDir = await findGameInstallFromSteamLibraries();
   if (steamDir) return steamDir;
 
   const fallback = await firstExistingDirectory(commonSteamGameCandidates());
   if (fallback) return fallback;
+
+  const uninstallDir = await findGameInstallFromUninstallRegistry();
+  if (uninstallDir) return uninstallDir;
 
   throw new Error(
     "Could not locate the Warlords Battlecry III install directory. Set WBC3_INSTALL_DIR or pass the archive path explicitly.",
@@ -213,6 +213,7 @@ async function queryRegistryValue(key, valueName) {
     const { stdout } = await execFileAsync("reg", ["query", key, "/v", valueName], {
       windowsHide: true,
       maxBuffer: 1024 * 1024,
+      timeout: 2500,
     });
     return parseRegistryValueFromBlock(stdout, valueName);
   } catch {
@@ -227,6 +228,7 @@ async function queryRegistryTree(key) {
     const { stdout } = await execFileAsync("reg", ["query", key, "/s"], {
       windowsHide: true,
       maxBuffer: 12 * 1024 * 1024,
+      timeout: 3500,
     });
     return stdout;
   } catch {

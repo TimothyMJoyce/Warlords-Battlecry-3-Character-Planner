@@ -7,6 +7,7 @@ import {
   resolveHeroDataArchivePath,
   resolvePortraitArchivePath,
 } from "./wbc3-paths.mjs";
+import { importHeroBuildsFromHeroData } from "./hero-data-reader.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const dist = resolve(root, "dist");
@@ -56,7 +57,37 @@ async function handleApiRequest(url, response) {
     return;
   }
 
+  if (url.pathname === "/api/local/heroes") {
+    const body = await getLocalHeroes();
+    sendJson(response, body.ok ? 200 : 404, body);
+    return;
+  }
+
   sendJson(response, 404, { error: "Unknown API endpoint" });
+}
+
+async function getLocalHeroes() {
+  try {
+    const heroDataPath = await resolveHeroDataArchivePath();
+    const { builds, metadata } = await importHeroBuildsFromHeroData(heroDataPath);
+    return {
+      ok: true,
+      builds,
+      metadata,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      builds: [],
+      metadata: {
+        path: "",
+        archive: "",
+        resourceCount: 0,
+        heroCount: 0,
+      },
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 async function getLocalPathStatus() {
