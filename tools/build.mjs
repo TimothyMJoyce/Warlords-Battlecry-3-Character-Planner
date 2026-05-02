@@ -12,7 +12,7 @@ if (!dist.startsWith(`${root}${sep}`)) {
 await rm(dist, { recursive: true, force: true });
 await mkdir(resolve(dist, "src"), { recursive: true });
 
-for (const path of ["index.html", "src/app.js", "src/styles.css", "src/data", "src/rules"]) {
+for (const path of ["index.html", "manifest.webmanifest", "src/app.js", "src/styles.css", "src/data", "src/rules", "src/app-assets"]) {
   const from = resolve(root, path);
   const to = resolve(dist, path);
   await mkdir(dirname(to), { recursive: true });

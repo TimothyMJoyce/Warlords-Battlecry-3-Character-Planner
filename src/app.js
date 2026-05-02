@@ -214,6 +214,8 @@ function render() {
 }
 
 function bindEvents() {
+  bindExclusiveTopbarMenus();
+
   document.querySelector("#reset-build-button").addEventListener("click", () => {
     resetBuild();
   });
@@ -289,6 +291,18 @@ function bindEvents() {
       loadSavedBuild(button.dataset.loadBuild);
     });
   });
+}
+
+function bindExclusiveTopbarMenus() {
+  const menus = Array.from(document.querySelectorAll(".settings-menu, .saved-menu"));
+  for (const menu of menus) {
+    menu.addEventListener("toggle", () => {
+      if (!menu.open) return;
+      for (const otherMenu of menus) {
+        if (otherMenu !== menu) otherMenu.open = false;
+      }
+    });
+  }
 }
 
 function updateStat(key, delta) {

@@ -17,7 +17,12 @@ if ([string]::IsNullOrWhiteSpace($OutPath)) {
 }
 
 if ([string]::IsNullOrWhiteSpace($IconPath)) {
-  $IconPath = Join-Path $BuildRoot "WBC3 Planner Cog Icon.ico"
+  $TrackedIconPath = Join-Path $Root "src\app-assets\app-icon.ico"
+  if (Test-Path -LiteralPath $TrackedIconPath) {
+    $IconPath = $TrackedIconPath
+  } else {
+    $IconPath = Join-Path $BuildRoot "WBC3 Planner Cog Icon.ico"
+  }
 }
 
 function Join-IfRoot {
@@ -116,10 +121,12 @@ if (Test-Path -LiteralPath $PayloadZip) {
 New-Item -ItemType Directory -Path $PayloadRoot -Force | Out-Null
 
 Copy-RequiredPath "index.html"
+Copy-RequiredPath "manifest.webmanifest"
 Copy-RequiredPath "src\app.js"
 Copy-RequiredPath "src\styles.css"
 Copy-RequiredPath "src\data"
 Copy-RequiredPath "src\rules"
+Copy-RequiredPath "src\app-assets"
 Copy-RequiredPath "tools\server.mjs"
 Copy-RequiredPath "tools\wbc3-paths.mjs"
 Copy-RequiredPath "tools\local-settings.mjs"
