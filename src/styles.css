@@ -241,14 +241,6 @@ h2 {
   align-items: stretch;
 }
 
-.builder-grid.has-skill-effects {
-  grid-template-areas:
-    "identity stats core defense"
-    "identity summary summary summary"
-    "identity effects effects effects"
-    "identity skills skills skills";
-}
-
 .panel {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -279,10 +271,6 @@ h2 {
 
 .skills-panel {
   grid-area: skills;
-}
-
-.skill-effects-panel {
-  grid-area: effects;
 }
 
 .panel-heading {
@@ -552,8 +540,7 @@ input {
   gap: 10px;
 }
 
-.stat-row,
-.skill-row {
+.stat-row {
   display: grid;
   grid-template-columns: minmax(150px, 1fr) 116px 56px;
   align-items: center;
@@ -562,6 +549,28 @@ input {
   border-radius: 8px;
   padding: 10px;
   background: #fbfdfc;
+}
+
+.skill-row {
+  display: grid;
+  grid-template-columns: minmax(190px, 0.9fr) minmax(260px, 1.1fr) 116px 56px;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  background: #fbfdfc;
+}
+
+.skill-info {
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.skill-info strong {
+  overflow-wrap: anywhere;
 }
 
 .stats-panel {
@@ -833,59 +842,42 @@ output {
   font-size: 0.94rem;
 }
 
-.effect-sections {
+.skill-effects-inline {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-  gap: 12px;
+  align-content: center;
+  gap: 6px;
+  min-width: 0;
 }
 
-.effect-group {
-  display: grid;
-  align-content: start;
-  gap: 8px;
-}
-
-.effect-group h3 {
-  margin: 0;
-  color: var(--green);
-  font-size: 0.84rem;
-}
-
-.effect-list {
-  display: grid;
-  gap: 8px;
-}
-
-.effect-item {
+.skill-effect-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 4px 10px;
-  border-left: 4px solid var(--blue);
+  gap: 2px 8px;
+  border-left: 3px solid var(--blue);
   border-radius: 6px;
-  padding: 8px 10px;
+  padding: 6px 8px;
   background: #f8fbfb;
 }
 
-.effect-item span,
-.effect-item small {
+.skill-effect-row span,
+.skill-effect-row small {
   color: var(--muted);
-  font-size: 0.82rem;
+  font-size: 0.75rem;
 }
 
-.effect-item strong {
+.skill-effect-row strong {
   color: var(--blue);
-  font-size: 0.94rem;
+  font-size: 0.84rem;
   overflow-wrap: anywhere;
 }
 
-.effect-item small {
+.skill-effect-row small {
   grid-column: 1 / -1;
   line-height: 1.25;
 }
 
 .skills-list {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -918,15 +910,6 @@ output {
       "skills skills";
   }
 
-  .builder-grid.has-skill-effects {
-    grid-template-areas:
-      "identity identity"
-      "stats core"
-      "defense defense"
-      "summary summary"
-      "effects effects"
-      "skills skills";
-  }
 }
 
 @media (max-width: 720px) {
@@ -949,17 +932,6 @@ output {
       "core"
       "defense"
       "summary"
-      "skills";
-  }
-
-  .builder-grid.has-skill-effects {
-    grid-template-areas:
-      "identity"
-      "stats"
-      "core"
-      "defense"
-      "summary"
-      "effects"
       "skills";
   }
 
@@ -986,7 +958,6 @@ output {
   .core-panel,
   .defense-panel,
   .summary-panel,
-  .skill-effects-panel,
   .skills-panel {
     grid-column: auto;
   }

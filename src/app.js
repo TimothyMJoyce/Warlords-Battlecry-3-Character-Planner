@@ -46,6 +46,7 @@ function render() {
   const statValidation = validateStatAllocation(build);
   const skillValidation = validateSkillAllocation(build);
   const unlocks = getAvailableSkillUnlocks(build);
+  const effectsBySkill = groupSkillEffectsBySkill(summary.skillEffectList);
   const race = races.find((entry) => entry.id === build.raceId);
   const heroClass = heroClasses.find((entry) => entry.id === build.classId);
 
@@ -75,7 +76,7 @@ function render() {
         </div>
       </header>
 
-      <section class="builder-grid ${summary.skillEffects.length ? "has-skill-effects" : ""}">
+      <section class="builder-grid">
         <aside class="panel identity-panel">
           <div class="panel-heading">
             <h2>Build</h2>
@@ -194,15 +195,13 @@ function render() {
           </div>
         </section>
 
-        ${summary.skillEffects.length ? skillEffectsPanel(summary.skillEffects) : ""}
-
         <section class="panel skills-panel">
           <div class="panel-heading">
             <h2>Skills</h2>
             <span>${skillValidation.spent} / ${skillValidation.available}</span>
           </div>
           <div class="skills-list">
-            ${unlocks.map((unlock) => skillRow(unlock, skillValidation)).join("")}
+            ${unlocks.map((unlock) => skillRow(unlock, skillValidation, effectsBySkill.get(unlock.skillId) ?? [])).join("")}
           </div>
           ${messages(skillValidation.warnings)}
         </section>
@@ -418,20 +417,22 @@ function statRow(key, base, allocated = 0, total, canAdd) {
   `;
 }
 
-function skillRow(unlock, skillValidation) {
+function skillRow(unlock, skillValidation, effects = []) {
   const skill = skillsById[unlock.skillId];
   const allocated = build.skillAllocation[unlock.skillId] ?? 0;
   const originText = unlock.mergedFrom?.length > 1 ? "Race + class" : unlock.origin;
   const unlockText = getSkillUnlockText(unlock);
   const locked = !unlock.available ? "is-locked" : "";
+  const hasEffects = effects.length ? "has-effects" : "";
   const maxed = unlock.maxLevel !== Infinity && unlock.currentLevel >= unlock.maxLevel;
   const canAdd = unlock.available && !maxed && skillValidation.spent < skillValidation.available;
   return `
-    <article class="skill-row ${locked}">
-      <div>
+    <article class="skill-row ${locked} ${hasEffects}">
+      <div class="skill-info">
         <strong>${skill?.displayName ?? unlock.skillId}</strong>
         <span>${originText} / ${unlockText}</span>
       </div>
+      ${skillEffectList(effects)}
       <div class="stepper">
         <button type="button" data-skill-key="${unlock.skillId}" data-skill-action="-1" ${allocated <= 0 ? "disabled" : ""}>-</button>
         <span>${allocated}</span>
@@ -439,6 +440,24 @@ function skillRow(unlock, skillValidation) {
       </div>
       <output>${unlock.currentLevel}</output>
     </article>
+  `;
+}
+
+function skillEffectList(effects) {
+  return `
+    <div class="skill-effects-inline">
+      ${effects.map(skillEffectRow).join("")}
+    </div>
+  `;
+}
+
+function skillEffectRow(effect) {
+  return `
+    <div class="skill-effect-row">
+      <span>${escapeHtml(effect.label)}</span>
+      <strong>${escapeHtml(effect.value)}</strong>
+      ${effect.detail ? `<small>${escapeHtml(effect.detail)}</small>` : ""}
+    </div>
   `;
 }
 
@@ -513,46 +532,13 @@ function moraleEffectRow(label, value) {
   `;
 }
 
-function skillEffectsPanel(effects) {
-  const groups = groupSkillEffects(effects);
-  return `
-    <section class="panel skill-effects-panel">
-      <div class="panel-heading">
-        <h2>Skill Effects</h2>
-        <span>${effects.length}</span>
-      </div>
-      <div class="effect-sections">
-        ${groups.map(([category, items]) => `
-          <section class="effect-group">
-            <h3>${escapeHtml(category)}</h3>
-            <div class="effect-list">
-              ${items.map(effectRow).join("")}
-            </div>
-          </section>
-        `).join("")}
-      </div>
-    </section>
-  `;
-}
-
-function effectRow(effect) {
-  return `
-    <div class="effect-item">
-      <span>${escapeHtml(effect.label)}</span>
-      <strong>${escapeHtml(effect.value)}</strong>
-      ${effect.detail ? `<small>${escapeHtml(effect.detail)}</small>` : ""}
-    </div>
-  `;
-}
-
-function groupSkillEffects(effects) {
+function groupSkillEffectsBySkill(effects = []) {
   const groups = new Map();
   for (const effect of effects) {
-    const category = effect.category || "Skill Effects";
-    if (!groups.has(category)) groups.set(category, []);
-    groups.get(category).push(effect);
+    if (!groups.has(effect.skillId)) groups.set(effect.skillId, []);
+    groups.get(effect.skillId).push(effect);
   }
-  return Array.from(groups.entries());
+  return groups;
 }
 
 function iconMarkup(iconKey) {

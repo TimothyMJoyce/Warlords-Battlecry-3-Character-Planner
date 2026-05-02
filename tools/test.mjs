@@ -13,6 +13,7 @@ import {
   calculateResistance,
   calculateHeroSummary,
   calculateStartingStats,
+  calculateSkillEffectList,
   calculateUnitAttackSpeed,
   clampLevel,
   getConversionRange,
@@ -246,9 +247,24 @@ assert.deepEqual(
     ["Gold Income", "+4"],
   ],
 );
+const visibleSkillEffects = calculateSkillEffectList(
+  {
+    assassin: 0,
+    armorer: 1,
+  },
+  { includeInactive: true },
+);
+assert.deepEqual(
+  visibleSkillEffects.map((effect) => [effect.skillId, effect.label, effect.value]),
+  [
+    ["assassin", "Assassination Score", 0],
+    ["armorer", "Piercing Armor Skill", "+5"],
+  ],
+);
 const assassinOnlySummary = calculateHeroSummary({ ...baseBuild, raceId: "dwarf", classId: "assassin" });
 assert.equal(assassinOnlySummary.skillEffects.length, 1);
 assert.equal(assassinOnlySummary.skillEffects[0].label, "Assassination Score");
+assert.equal(assassinOnlySummary.skillEffectList.some((effect) => effect.skillId === "assassin"), true);
 assert.equal(calculateCommandEffect(0), 1);
 assert.equal(calculateCommandEffect(3), 3);
 assert.equal(calculateCommandEffect(10), 10);

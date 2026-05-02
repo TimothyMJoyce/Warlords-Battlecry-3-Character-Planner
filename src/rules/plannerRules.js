@@ -217,6 +217,7 @@ export function calculateHeroSummary(build) {
   const conversionRange = commandRadius;
   const retinueSlots = 8;
   const skillEffects = calculateConditionalSkillEffects(skillLevels);
+  const skillEffectList = calculateSkillEffectList(skillLevels, { includeInactive: true });
 
   return {
     level,
@@ -251,6 +252,7 @@ export function calculateHeroSummary(build) {
     armyLimitBonus,
     retinueSlots,
     skillEffects,
+    skillEffectList,
     dataNotes: {
       formulas: dataNotes.derivedStats,
       statBonuses: dataNotes.statBonuses,
@@ -271,9 +273,17 @@ export function calculateHeroSummary(build) {
 }
 
 export function calculateConditionalSkillEffects(skillLevels = {}) {
+  return calculateSkillEffectList(skillLevels);
+}
+
+export function calculateSkillEffectList(skillLevels = {}, options = {}) {
   const effects = [];
+  const includeInactive = options.includeInactive === true;
+  const hasListedSkill = (skillId) => Object.prototype.hasOwnProperty.call(skillLevels ?? {}, skillId);
+  const currentLevel = (skillId) => Math.max(0, Math.trunc(skillLevels?.[skillId] ?? 0));
+  const shouldInclude = (skillId) => (includeInactive ? hasListedSkill(skillId) : hasSkill(skillLevels, skillId));
   const add = (skillId, label, value, detail = "", category = "Skill Effects") => {
-    if (!hasSkill(skillLevels, skillId)) return;
+    if (!shouldInclude(skillId)) return;
     effects.push({
       skillId,
       label,
@@ -284,8 +294,9 @@ export function calculateConditionalSkillEffects(skillLevels = {}) {
     });
   };
   const addSkillEffect = (skillId, label, formatter, detail = "", category = "Skill Effects") => {
-    if (!hasSkill(skillLevels, skillId)) return;
-    add(skillId, label, formatter(skillEffect(skillId, skillLevels[skillId]), skillLevels[skillId]), detail, category);
+    if (!shouldInclude(skillId)) return;
+    const level = currentLevel(skillId);
+    add(skillId, label, formatter(skillEffect(skillId, level), level), detail, category);
   };
   const signed = (value) => formatSigned(value);
   const signedPercent = (value) => `${formatSigned(value)}%`;
@@ -306,8 +317,8 @@ export function calculateConditionalSkillEffects(skillLevels = {}) {
   addSkillEffect("shadowStrength", "Night Combat", (value) => signed(value), "Only applies at night", "Combat");
   addSkillEffect("swiftness", "Swiftness", (value) => signedPercent(value), "Attack speed multiplier bonus", "Combat");
 
-  if (hasSkill(skillLevels, "fireMissile")) {
-    const level = skillLevels.fireMissile;
+  if (shouldInclude("fireMissile")) {
+    const level = currentLevel("fireMissile");
     const damagePercent = skillEffect("fireMissile", level);
     add(
       "fireMissile",
