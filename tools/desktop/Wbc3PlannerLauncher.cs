@@ -1,0 +1,474 @@
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using System.Management;
+using System.Threading;
+using System.Windows.Forms;
+
+namespace Wbc3Planner
+{
+    internal static class Program
+    {
+        [STAThread]
+        private static int Main(string[] args)
+        {
+            Application.EnableVisualStyles();
+
+            try
+            {
+                LauncherOptions options = LauncherOptions.Parse(args);
+                if (options.ShowHelp)
+                {
+                    MessageBox.Show(
+                        "WBC3 Planner.exe\n\n" +
+                        "Options:\n" +
+                        "  --refresh    Re-import HeroData and extracted assets before opening.\n" +
+                        "  --stop       Stop the background planner server.\n" +
+                        "  --port 5173  Start on a specific local port.",
+                        "WBC3 Planner",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
+                    return 0;
+                }
+
+                Launcher launcher = new Launcher(ProjectRoot.Find());
+                if (options.Stop)
+                {
+                    launcher.StopExistingServer(true);
+                    return 0;
+                }
+
+                launcher.Start(options);
+                return 0;
+            }
+            catch (Exception error)
+            {
+                MessageBox.Show(error.Message, "WBC3 Planner", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return 1;
+            }
+        }
+    }
+
+    internal sealed class LauncherOptions
+    {
+        public bool RefreshLocalData;
+        public bool Stop;
+        public bool ShowHelp;
+        public int Port = 5173;
+
+        public static LauncherOptions Parse(string[] args)
+        {
+            LauncherOptions options = new LauncherOptions();
+
+            for (int index = 0; index < args.Length; index += 1)
+            {
+                string value = args[index].Trim();
+                string lower = value.ToLowerInvariant();
+
+                if (lower == "--refresh" || lower == "/refresh")
+                {
+                    options.RefreshLocalData = true;
+                }
+                else if (lower == "--stop" || lower == "/stop")
+                {
+                    options.Stop = true;
+                }
+                else if (lower == "--help" || lower == "/?" || lower == "-h")
+                {
+                    options.ShowHelp = true;
+                }
+                else if (lower == "--port" || lower == "/port")
+                {
+                    if (index + 1 >= args.Length)
+                    {
+                        throw new InvalidOperationException("Missing port number after " + value + ".");
+                    }
+
+                    int port;
+                    if (!Int32.TryParse(args[index + 1], out port) || port < 1 || port > 65535)
+                    {
+                        throw new InvalidOperationException("Invalid local port: " + args[index + 1] + ".");
+                    }
+
+                    options.Port = port;
+                    index += 1;
+                }
+                else
+                {
+                    throw new InvalidOperationException("Unknown option: " + value + ".");
+                }
+            }
+
+            return options;
+        }
+    }
+
+    internal static class ProjectRoot
+    {
+        public static string Find()
+        {
+            string exeDirectory = AppDomain.CurrentDomain.BaseDirectory;
+            string currentDirectory = Directory.GetCurrentDirectory();
+
+            string root = FirstExistingProjectRoot(new string[]
+            {
+                exeDirectory,
+                Directory.GetParent(exeDirectory) == null ? null : Directory.GetParent(exeDirectory).FullName,
+                currentDirectory,
+                Directory.GetParent(currentDirectory) == null ? null : Directory.GetParent(currentDirectory).FullName
+            });
+
+            if (root == null)
+            {
+                throw new InvalidOperationException(
+                    "Could not find the planner files. Keep WBC3 Planner.exe in the same folder as index.html and the tools folder.");
+            }
+
+            return root;
+        }
+
+        private static string FirstExistingProjectRoot(IEnumerable<string> candidates)
+        {
+            foreach (string candidate in candidates)
+            {
+                if (String.IsNullOrWhiteSpace(candidate))
+                {
+                    continue;
+                }
+
+                string root = Path.GetFullPath(candidate);
+                if (File.Exists(Path.Combine(root, "index.html")) &&
+                    File.Exists(Path.Combine(root, "tools", "server.mjs")))
+                {
+                    return root;
+                }
+            }
+
+            return null;
+        }
+    }
+
+    internal sealed class Launcher
+    {
+        private readonly string root;
+        private readonly string dist;
+        private readonly string serverUrlFile;
+        private readonly string pidFile;
+
+        public Launcher(string root)
+        {
+            this.root = root;
+            this.dist = Path.Combine(root, "dist");
+            this.serverUrlFile = Path.Combine(this.dist, "server-url.txt");
+            this.pidFile = Path.Combine(this.dist, "server.pid");
+        }
+
+        public void Start(LauncherOptions options)
+        {
+            Directory.CreateDirectory(this.dist);
+            DeleteIfExists(this.serverUrlFile);
+
+            string node = FindNode();
+
+            if (options.RefreshLocalData)
+            {
+                RunOptionalNodeTool(node, Path.Combine(this.root, "tools", "import-hero-data.mjs"));
+                RunOptionalNodeTool(node, Path.Combine(this.root, "tools", "extract-portraits.mjs"));
+                RunOptionalNodeTool(node, Path.Combine(this.root, "tools", "extract-ui-icons.mjs"));
+            }
+
+            StopExistingServer(false);
+
+            string serverScript = Path.Combine(this.root, "tools", "server.mjs");
+            ProcessStartInfo serverStart = new ProcessStartInfo();
+            serverStart.FileName = node;
+            serverStart.Arguments = Quote(serverScript);
+            serverStart.WorkingDirectory = this.root;
+            serverStart.UseShellExecute = false;
+            serverStart.CreateNoWindow = true;
+            serverStart.WindowStyle = ProcessWindowStyle.Hidden;
+            serverStart.EnvironmentVariables["PORT"] = options.Port.ToString();
+
+            Process server = Process.Start(serverStart);
+            if (server == null)
+            {
+                throw new InvalidOperationException("Could not start the planner server.");
+            }
+
+            File.WriteAllText(this.pidFile, server.Id.ToString());
+
+            string url = WaitForServerUrl(server);
+            OpenPlannerWindow(url);
+        }
+
+        public void StopExistingServer(bool showMessage)
+        {
+            if (!File.Exists(this.pidFile))
+            {
+                if (showMessage)
+                {
+                    MessageBox.Show("No WBC3 planner server pid file was found.", "WBC3 Planner", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+
+                return;
+            }
+
+            string text = File.ReadAllText(this.pidFile).Trim();
+            int processId;
+            if (!Int32.TryParse(text, out processId))
+            {
+                DeleteIfExists(this.pidFile);
+                if (showMessage)
+                {
+                    MessageBox.Show("Removed an invalid planner pid file.", "WBC3 Planner", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+
+                return;
+            }
+
+            bool stopped = false;
+            try
+            {
+                if (IsPlannerServerProcess(processId))
+                {
+                    Process process = Process.GetProcessById(processId);
+                    process.Kill();
+                    stopped = true;
+                }
+            }
+            catch
+            {
+                stopped = false;
+            }
+
+            DeleteIfExists(this.pidFile);
+
+            if (showMessage)
+            {
+                MessageBox.Show(
+                    stopped ? "Stopped the WBC3 planner server." : "No matching WBC3 planner server process was running.",
+                    "WBC3 Planner",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+            }
+        }
+
+        private static string FindNode()
+        {
+            string fromPath = FindExecutableOnPath("node.exe");
+            if (fromPath != null)
+            {
+                return fromPath;
+            }
+
+            string userProfile = Environment.GetEnvironmentVariable("USERPROFILE");
+            string localAppData = Environment.GetEnvironmentVariable("LOCALAPPDATA");
+            string programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+            string programFilesX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+
+            string node = FirstExistingFile(new string[]
+            {
+                CombineIfRoot(userProfile, ".cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\node\\bin\\node.exe"),
+                CombineIfRoot(localAppData, "Programs\\nodejs\\node.exe"),
+                CombineIfRoot(programFiles, "nodejs\\node.exe"),
+                CombineIfRoot(programFilesX86, "nodejs\\node.exe")
+            });
+
+            if (node == null)
+            {
+                throw new InvalidOperationException("Node.js was not found. Install Node.js, then run WBC3 Planner.exe again.");
+            }
+
+            return node;
+        }
+
+        private static string FindEdge()
+        {
+            string fromPath = FindExecutableOnPath("msedge.exe");
+            if (fromPath != null)
+            {
+                return fromPath;
+            }
+
+            string localAppData = Environment.GetEnvironmentVariable("LOCALAPPDATA");
+            string programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+            string programFilesX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+
+            return FirstExistingFile(new string[]
+            {
+                CombineIfRoot(programFilesX86, "Microsoft\\Edge\\Application\\msedge.exe"),
+                CombineIfRoot(programFiles, "Microsoft\\Edge\\Application\\msedge.exe"),
+                CombineIfRoot(localAppData, "Microsoft\\Edge\\Application\\msedge.exe")
+            });
+        }
+
+        private static string FindExecutableOnPath(string executable)
+        {
+            string path = Environment.GetEnvironmentVariable("PATH") ?? "";
+            string[] entries = path.Split(new char[] { Path.PathSeparator }, StringSplitOptions.RemoveEmptyEntries);
+
+            foreach (string entry in entries)
+            {
+                try
+                {
+                    string candidate = Path.Combine(entry.Trim(), executable);
+                    if (File.Exists(candidate))
+                    {
+                        return candidate;
+                    }
+                }
+                catch
+                {
+                }
+            }
+
+            return null;
+        }
+
+        private static string FirstExistingFile(IEnumerable<string> candidates)
+        {
+            foreach (string candidate in candidates)
+            {
+                if (!String.IsNullOrWhiteSpace(candidate) && File.Exists(candidate))
+                {
+                    return Path.GetFullPath(candidate);
+                }
+            }
+
+            return null;
+        }
+
+        private static string CombineIfRoot(string root, string child)
+        {
+            if (String.IsNullOrWhiteSpace(root))
+            {
+                return null;
+            }
+
+            return Path.Combine(root, child);
+        }
+
+        private void RunOptionalNodeTool(string node, string scriptPath)
+        {
+            if (!File.Exists(scriptPath))
+            {
+                return;
+            }
+
+            ProcessStartInfo start = new ProcessStartInfo();
+            start.FileName = node;
+            start.Arguments = Quote(scriptPath);
+            start.WorkingDirectory = this.root;
+            start.UseShellExecute = false;
+            start.CreateNoWindow = true;
+            start.RedirectStandardError = true;
+            start.RedirectStandardOutput = true;
+
+            Process process = Process.Start(start);
+            if (process == null)
+            {
+                return;
+            }
+
+            process.WaitForExit();
+            if (process.ExitCode != 0)
+            {
+                string error = process.StandardError.ReadToEnd().Trim();
+                MessageBox.Show(
+                    "Skipped " + Path.GetFileName(scriptPath) + "." + Environment.NewLine + Environment.NewLine + error,
+                    "WBC3 Planner",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+            }
+        }
+
+        private string WaitForServerUrl(Process server)
+        {
+            for (int index = 0; index < 80; index += 1)
+            {
+                Thread.Sleep(100);
+
+                if (File.Exists(this.serverUrlFile))
+                {
+                    string url = File.ReadAllText(this.serverUrlFile).Trim();
+                    if (!String.IsNullOrWhiteSpace(url))
+                    {
+                        return url;
+                    }
+                }
+
+                server.Refresh();
+                if (server.HasExited)
+                {
+                    throw new InvalidOperationException("The planner server exited before it wrote a URL.");
+                }
+            }
+
+            throw new TimeoutException("Timed out waiting for the planner server to start.");
+        }
+
+        private static void OpenPlannerWindow(string url)
+        {
+            string edge = FindEdge();
+
+            if (edge != null)
+            {
+                ProcessStartInfo edgeStart = new ProcessStartInfo();
+                edgeStart.FileName = edge;
+                edgeStart.Arguments = "--app=" + Quote(url) + " --new-window";
+                edgeStart.UseShellExecute = false;
+                Process.Start(edgeStart);
+                return;
+            }
+
+            ProcessStartInfo browserStart = new ProcessStartInfo();
+            browserStart.FileName = url;
+            browserStart.UseShellExecute = true;
+            Process.Start(browserStart);
+        }
+
+        private static bool IsPlannerServerProcess(int processId)
+        {
+            try
+            {
+                string query = "SELECT CommandLine FROM Win32_Process WHERE ProcessId = " + processId.ToString();
+                using (ManagementObjectSearcher searcher = new ManagementObjectSearcher(query))
+                using (ManagementObjectCollection results = searcher.Get())
+                {
+                    foreach (ManagementObject result in results)
+                    {
+                        string commandLine = Convert.ToString(result["CommandLine"]) ?? "";
+                        return commandLine.IndexOf("server.mjs", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                               commandLine.IndexOf("tools", StringComparison.OrdinalIgnoreCase) >= 0;
+                    }
+                }
+            }
+            catch
+            {
+                return false;
+            }
+
+            return false;
+        }
+
+        private static void DeleteIfExists(string path)
+        {
+            try
+            {
+                if (File.Exists(path))
+                {
+                    File.Delete(path);
+                }
+            }
+            catch
+            {
+            }
+        }
+
+        private static string Quote(string value)
+        {
+            return "\"" + value.Replace("\"", "\\\"") + "\"";
+        }
+    }
+}

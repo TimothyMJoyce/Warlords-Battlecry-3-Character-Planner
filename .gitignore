@@ -1,0 +1,16 @@
+# Generated output
+dist/
+WBC3 Planner.exe
+
+# Local/runtime noise
+*.log
+server-url.txt
+.DS_Store
+Thumbs.db
+node_modules/
+.env
+.env.*
+
+# Editor settings
+.vscode/
+.idea/
