@@ -262,9 +262,34 @@ assert.deepEqual(
     ["armorer", "Piercing Armor Skill", "+5"],
   ],
 );
+const missingSkillDescriptions = skills
+  .filter((skill) => skill.id !== "null")
+  .filter((skill) => calculateSkillEffectList({ [skill.id]: 1 }, { includeInactive: true }).length === 0)
+  .map((skill) => skill.id);
+assert.deepEqual(missingSkillDescriptions, []);
+assert.deepEqual(
+  calculateSkillEffectList({ magicHealing: 0 }, { includeInactive: true }).map((effect) => [
+    effect.label,
+    effect.value,
+  ]),
+  [["Spells Known", "No spells"]],
+);
+assert.deepEqual(
+  calculateSkillEffectList({ magicHealing: 11 }, { includeInactive: true }).map((effect) => [
+    effect.label,
+    effect.value,
+  ]),
+  [["Spells Known", "1 spell / level 2"]],
+);
 const assassinOnlySummary = calculateHeroSummary({ ...baseBuild, raceId: "dwarf", classId: "assassin" });
-assert.equal(assassinOnlySummary.skillEffects.length, 1);
-assert.equal(assassinOnlySummary.skillEffects[0].label, "Assassination Score");
+assert.deepEqual(
+  assassinOnlySummary.skillEffects.map((effect) => [effect.skillId, effect.label, effect.value]),
+  [
+    ["constitution", "Life", "+15"],
+    ["assassin", "Assassination Score", 7],
+    ["dwarfLord", "Race Morale", "+1"],
+  ],
+);
 assert.equal(assassinOnlySummary.skillEffectList.some((effect) => effect.skillId === "assassin"), true);
 assert.equal(calculateCommandEffect(0), 1);
 assert.equal(calculateCommandEffect(3), 3);

@@ -51,6 +51,25 @@ const RACE_MORALE_SKILL_IDS = {
   ssrathi: "serpentLord",
 };
 
+const MAGIC_SKILL_IDS = [
+  "magicHealing",
+  "magicSummoning",
+  "magicNature",
+  "magicIllusion",
+  "magicNecromancy",
+  "magicPyromancy",
+  "magicAlchemy",
+  "magicRunes",
+  "magicIce",
+  "magicChaos",
+  "magicPoison",
+  "magicDivination",
+  "magicArcane",
+  "magicTime",
+];
+
+const RACE_MORALE_SKILL_VALUES = Object.values(RACE_MORALE_SKILL_IDS);
+
 export const clampLevel = (level) => Math.max(1, Math.min(HERO_MAX_LEVEL, Math.trunc(Number(level) || 1)));
 
 export const getStatPointsForLevel = (level) => Math.max(0, clampLevel(level) - 1);
@@ -302,6 +321,16 @@ export function calculateSkillEffectList(skillLevels = {}, options = {}) {
   const signed = (value) => formatSigned(value);
   const signedPercent = (value) => `${formatSigned(value)}%`;
 
+  addSkillEffect("ferocity", "Combat", (value) => signed(value), "Included in Combat", "Core");
+  addSkillEffect("constitution", "Life", (value) => signed(value), "Included in Life", "Core");
+  addSkillEffect("running", "Speed", (value) => signed(value), "Included in Speed", "Core");
+  addSkillEffect("lore", "Mana", (value) => signed(value), "Included in Mana", "Core");
+  addSkillEffect("ritual", "Spellcasting", (value) => signed(value), "Included in Spellcasting", "Magic");
+
+  for (const skillId of MAGIC_SKILL_IDS) {
+    addSkillEffect(skillId, "Spells Known", (value) => formatMagicSkillProgress(value), "Unlocks spells in this sphere", "Magic");
+  }
+
   addSkillEffect("assassin", "Assassination Score", (value) => value, "Base chance before target hero level and immunity checks", "Combat");
   addSkillEffect("weaponmaster", "Critical Hit Bonus", (value) => signedPercent(value), "Adds to critical chance", "Combat");
   addSkillEffect(
@@ -349,8 +378,10 @@ export function calculateSkillEffectList(skillLevels = {}, options = {}) {
   addSkillEffect("regeneration", "Life Regen Skill", (value) => signedPercent(value), "Shown in the Life tooltip", "Shown Breakouts");
   addSkillEffect("energy", "Mana Regen Skill", (value) => signedPercent(value), "Shown in the Mana tooltip", "Shown Breakouts");
   addSkillEffect("armorer", "Piercing Armor Skill", (value) => signed(value), "Included in Piercing resistance", "Shown Breakouts");
+  addSkillEffect("warding", "Resistance", (value) => signed(value), "Included in Resistance", "Shown Breakouts");
   addSkillEffect("scales", "Slashing Armor Skill", (value) => signed(value), "Included in Slashing resistance", "Shown Breakouts");
   addSkillEffect("thickHide", "Crushing Armor Skill", (value) => signed(value), "Included in Crushing resistance", "Shown Breakouts");
+  addSkillEffect("invulnerability", "Armor", (value) => signed(value), "Included in Armor", "Shown Breakouts");
   addSkillEffect("fireResistance", "Fire Resistance Skill", (value) => signed(value), "Included in Fire resistance", "Shown Breakouts");
   addSkillEffect("coldResistance", "Cold Resistance Skill", (value) => signed(value), "Included in Cold resistance", "Shown Breakouts");
   addSkillEffect("electricityResistance", "Electricity Resistance Skill", (value) => signed(value), "Included in Electricity resistance", "Shown Breakouts");
@@ -363,8 +394,14 @@ export function calculateSkillEffectList(skillLevels = {}, options = {}) {
   addSkillEffect("gemcutting", "Crystal Income", (value) => signed(value), "Added to periodic income", "Economy");
   addSkillEffect("trade", "Trade Rate", (value) => `${Math.min(50 + value, 90)}%`, "Starts at 50% and caps at 90%", "Economy");
   addSkillEffect("diplomacy", "Setup Points", (value) => signed(value), "Added to retinue setup points", "Economy");
+  addSkillEffect("merchant", "Merchant Score", (value) => signed(value), "Improves shop prices", "Economy");
   addSkillEffect("potionmaster", "Mana Potion Effect", (value) => signedPercent(value), "Bonus mana restored by potions", "Economy");
   addSkillEffect("contamination", "Disease Virulence", (value) => signed(value), "Added to global plague virulence", "Economy");
+
+  addSkillEffect("leadership", "Morale", (value) => signed(value), "Affects army limit, command effect, and unit attack speed", "Command");
+  for (const skillId of RACE_MORALE_SKILL_VALUES) {
+    addSkillEffect(skillId, "Race Morale", (value) => signed(value), "Affects army limit, command effect, and unit attack speed", "Command");
+  }
 
   addSkillEffect("elcorsAura", "Healing Magic Bonus", (value) => signed(value), "Added to most healing spells", "Support");
   addSkillEffect("engineer", "Building Hit Points", (value) => signedPercent(value), "Applied when buildings are created", "Support");
@@ -712,6 +749,13 @@ function getFireMissileRange(level) {
   if (rank < 40 && rank >= 15) return 8;
   if (rank < 80 && rank >= 40) return 10;
   return 12;
+}
+
+function formatMagicSkillProgress(value) {
+  if (value <= 0) return "No spells";
+  const spellCount = value % 10 || 10;
+  const spellLabel = spellCount === 1 ? "spell" : "spells";
+  return `${spellCount} ${spellLabel} / level ${Math.ceil(value / 10)}`;
 }
 
 function clampIndex(value, min, max) {
