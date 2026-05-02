@@ -324,6 +324,8 @@ namespace Wbc3Planner
             serverStart.UseShellExecute = false;
             serverStart.CreateNoWindow = true;
             serverStart.WindowStyle = ProcessWindowStyle.Hidden;
+            serverStart.RedirectStandardError = true;
+            serverStart.RedirectStandardOutput = true;
             serverStart.EnvironmentVariables["PORT"] = options.Port.ToString();
 
             Process server = Process.Start(serverStart);
@@ -343,27 +345,49 @@ namespace Wbc3Planner
 
         public void StopExistingServer(bool showMessage)
         {
-            if (!File.Exists(this.pidFile))
+            int stoppedCount = 0;
+            int checkedCount = 0;
+            foreach (string candidatePidFile in FindPlannerPidFiles())
             {
-                if (showMessage)
+                checkedCount += 1;
+                if (StopServerFromPidFile(candidatePidFile))
                 {
-                    MessageBox.Show("No WBC3 planner server pid file was found.", "WBC3 Planner", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    stoppedCount += 1;
                 }
-
-                return;
             }
 
-            string text = File.ReadAllText(this.pidFile).Trim();
+            if (showMessage)
+            {
+                MessageBox.Show(
+                    stoppedCount > 0
+                        ? "Stopped " + stoppedCount + " WBC3 planner server" + (stoppedCount == 1 ? "." : "s.")
+                        : checkedCount > 0
+                            ? "No matching WBC3 planner server process was running."
+                            : "No WBC3 planner server pid file was found.",
+                    "WBC3 Planner",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+            }
+        }
+
+        private bool StopServerFromPidFile(string pidFilePath)
+        {
+            string text;
+            try
+            {
+                text = File.ReadAllText(pidFilePath).Trim();
+            }
+            catch
+            {
+                DeleteIfExists(pidFilePath);
+                return false;
+            }
+
             int processId;
             if (!Int32.TryParse(text, out processId))
             {
-                DeleteIfExists(this.pidFile);
-                if (showMessage)
-                {
-                    MessageBox.Show("Removed an invalid planner pid file.", "WBC3 Planner", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                }
-
-                return;
+                DeleteIfExists(pidFilePath);
+                return false;
             }
 
             bool stopped = false;
@@ -382,15 +406,48 @@ namespace Wbc3Planner
                 stopped = false;
             }
 
-            DeleteIfExists(this.pidFile);
+            DeleteIfExists(pidFilePath);
+            return stopped;
+        }
 
-            if (showMessage)
+        private IEnumerable<string> FindPlannerPidFiles()
+        {
+            HashSet<string> paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            AddIfFile(paths, this.pidFile);
+
+            string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            if (!String.IsNullOrWhiteSpace(localAppData))
             {
-                MessageBox.Show(
-                    stopped ? "Stopped the WBC3 planner server." : "No matching WBC3 planner server process was running.",
-                    "WBC3 Planner",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information);
+                string plannerRoot = Path.Combine(localAppData, "WBC3 Planner");
+                try
+                {
+                    if (Directory.Exists(plannerRoot))
+                    {
+                        foreach (string file in Directory.GetFiles(plannerRoot, "server.pid", SearchOption.AllDirectories))
+                        {
+                            AddIfFile(paths, file);
+                        }
+                    }
+                }
+                catch
+                {
+                }
+            }
+
+            return paths;
+        }
+
+        private static void AddIfFile(HashSet<string> paths, string path)
+        {
+            try
+            {
+                if (!String.IsNullOrWhiteSpace(path) && File.Exists(path))
+                {
+                    paths.Add(Path.GetFullPath(path));
+                }
+            }
+            catch
+            {
             }
         }
 
@@ -541,7 +598,10 @@ namespace Wbc3Planner
                 server.Refresh();
                 if (server.HasExited)
                 {
-                    throw new InvalidOperationException("The planner server exited before it wrote a URL.");
+                    string details = ReadProcessOutput(server);
+                    throw new InvalidOperationException(
+                        "The planner server exited before it wrote a URL." +
+                        (String.IsNullOrWhiteSpace(details) ? "" : Environment.NewLine + Environment.NewLine + details));
                 }
             }
 
@@ -577,6 +637,26 @@ namespace Wbc3Planner
             catch
             {
                 return false;
+            }
+        }
+
+        private static string ReadProcessOutput(Process process)
+        {
+            try
+            {
+                string output = process.StandardOutput.ReadToEnd().Trim();
+                string error = process.StandardError.ReadToEnd().Trim();
+                string combined = (output + Environment.NewLine + error).Trim();
+                if (combined.Length > 1800)
+                {
+                    return combined.Substring(combined.Length - 1800);
+                }
+
+                return combined;
+            }
+            catch
+            {
+                return "";
             }
         }
 

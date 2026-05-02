@@ -20,17 +20,13 @@ export async function resolveGraphicsArchivePath(explicitPath) {
 }
 
 export async function resolveHeroDataArchivePath(explicitPath) {
-  const explicit = await resolveExplicitPath(explicitPath, HERO_DATA_RELATIVE_PATH);
+  const explicit = await resolveHeroDataPathInput(explicitPath);
   if (explicit) return explicit;
 
-  const fromEnv = await resolveExplicitPath(process.env.WBC3_HERO_DATA_PATH, HERO_DATA_RELATIVE_PATH);
+  const fromEnv = await resolveHeroDataPathInput(process.env.WBC3_HERO_DATA_PATH);
   if (fromEnv) return fromEnv;
 
-  const documentsDir = await getWindowsDocumentsDir();
-  const candidates = [
-    documentsDir ? join(documentsDir, HERO_DATA_RELATIVE_PATH) : null,
-    join(homedir(), "Documents", HERO_DATA_RELATIVE_PATH),
-  ];
+  const candidates = (await commonDocumentRoots()).map((root) => join(root, HERO_DATA_RELATIVE_PATH));
 
   const found = await firstExistingFile(candidates);
   if (found) return found;
@@ -56,7 +52,7 @@ async function resolveGameArchivePath(explicitPath, relativeArchivePath, archive
 }
 
 export async function resolveGameInstallDir() {
-  const explicit = await firstExistingDirectory([process.env.WBC3_INSTALL_DIR]);
+  const explicit = await firstExistingDirectory([process.env.WBC3_INSTALL_DIR, process.env.WBC3_GAME_DIR]);
   if (explicit) return explicit;
 
   const steamDir = await findGameInstallFromSteamLibraries();
@@ -83,7 +79,26 @@ async function resolveExplicitPath(value, relativePathWhenDirectory) {
   }
 
   if (await isFile(resolved)) return resolved;
-  return resolved;
+  return null;
+}
+
+async function resolveHeroDataPathInput(value) {
+  if (!value) return null;
+
+  const resolved = resolve(expandWindowsEnvironment(value));
+  if (await isFile(resolved)) return resolved;
+
+  if (await isDirectory(resolved)) {
+    const archiveInsideDirectory = join(resolved, "HeroData.xcr");
+    if (await isFile(archiveInsideDirectory)) return archiveInsideDirectory;
+
+    if (basename(resolved).toLowerCase() === "herodata") {
+      const siblingArchive = join(dirname(resolved), "HeroData.xcr");
+      if (await isFile(siblingArchive)) return siblingArchive;
+    }
+  }
+
+  return null;
 }
 
 async function findGameInstallFromUninstallRegistry() {
@@ -249,6 +264,8 @@ function commonSteamGameCandidates() {
     process.env.STEAM_DIR,
     process.env.ProgramFiles ? join(process.env.ProgramFiles, "Steam") : null,
     process.env["ProgramFiles(x86)"] ? join(process.env["ProgramFiles(x86)"], "Steam") : null,
+    windowsDriveRoot() ? join(windowsDriveRoot(), "Program Files", "Steam") : null,
+    windowsDriveRoot() ? join(windowsDriveRoot(), "Program Files (x86)", "Steam") : null,
   ];
 
   for (const steamRoot of steamRoots) {
@@ -256,6 +273,36 @@ function commonSteamGameCandidates() {
   }
 
   return candidates;
+}
+
+async function commonDocumentRoots() {
+  return uniquePaths([
+    await getWindowsDocumentsDir(),
+    process.env.WBC3_DOCUMENTS_DIR,
+    process.env.USERPROFILE ? join(process.env.USERPROFILE, "Documents") : null,
+    process.env.OneDrive ? join(process.env.OneDrive, "Documents") : null,
+    process.env.OneDriveConsumer ? join(process.env.OneDriveConsumer, "Documents") : null,
+    process.env.OneDriveCommercial ? join(process.env.OneDriveCommercial, "Documents") : null,
+    join(homedir(), "Documents"),
+  ]);
+}
+
+function windowsDriveRoot() {
+  const drive = process.env.SystemDrive || "C:";
+  return /^[a-z]:$/i.test(drive) ? `${drive}\\` : drive;
+}
+
+function uniquePaths(paths) {
+  const seen = new Set();
+  const unique = [];
+  for (const path of paths.filter(Boolean)) {
+    const resolved = resolve(expandWindowsEnvironment(path));
+    const key = resolved.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(resolved);
+  }
+  return unique;
 }
 
 async function firstExistingFile(candidates) {

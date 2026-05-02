@@ -791,7 +791,12 @@ async function loadLocalHeroBuilds() {
     const response = await fetch("/api/local/heroes", { cache: "no-store" });
     const body = await response.json().catch(() => null);
     if (!response.ok || !body?.ok) {
-      localHeroImportError = body?.error ? `Hero import failed: ${body.error}` : "";
+      localHeroImportError =
+        body?.error === "Unknown API endpoint"
+          ? "Hero import needs the current desktop server. Close and reopen WBC3 Planner."
+          : body?.error
+            ? `Hero import failed: ${body.error}`
+            : "";
       render();
       return;
     }

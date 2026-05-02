@@ -129,7 +129,7 @@ function sendJson(response, statusCode, body) {
   response.end(JSON.stringify(body, null, 2));
 }
 
-function listen(port, attemptsLeft = 10) {
+function listen(port, attemptsLeft = 50) {
   server.once("error", (error) => {
     if (error.code === "EADDRINUSE" && attemptsLeft > 0) {
       listen(port + 1, attemptsLeft - 1);
@@ -142,7 +142,12 @@ function listen(port, attemptsLeft = 10) {
   server.listen(port, "127.0.0.1", () => {
     const url = `http://127.0.0.1:${port}`;
     mkdir(dist, { recursive: true })
-      .then(() => writeFile(resolve(dist, "server-url.txt"), url))
+      .then(() =>
+        Promise.all([
+          writeFile(resolve(dist, "server-url.txt"), url),
+          writeFile(resolve(dist, "server.pid"), String(process.pid)),
+        ]),
+      )
       .catch(() => {});
     console.log(`WBC3 planner running at ${url}`);
   });
