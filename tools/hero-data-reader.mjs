@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { calculateStartingStats, mergeCareerSkills } from "../src/rules/plannerRules.js";
 import { heroClasses, races, skills } from "../src/data/gameData.js";
+import { getDefaultAvatarId, heroAvatarsById } from "../src/data/heroAvatars.js";
 import { portableArchiveLabel } from "./wbc3-paths.mjs";
 
 const resourceHeaderSize = 532;
@@ -122,6 +123,8 @@ function parseHero(bytes, resourceName, fileIndex = 0) {
   const classIndex = bytes.readUInt16LE(50);
   const raceId = races[raceIndex]?.id;
   const classId = heroClasses[classIndex]?.id;
+  const avatarCode = readFourCC(bytes, 92);
+  const avatarId = heroAvatarsById[avatarCode] ? avatarCode : getDefaultAvatarId(raceId);
 
   if (!raceId || !classId) {
     throw new Error(`Unsupported race/class in ${resourceName}: race ${raceIndex}, class ${classIndex}`);
@@ -153,10 +156,12 @@ function parseHero(bytes, resourceName, fileIndex = 0) {
   return {
     id: `herodata-${slug(`${heroName}-${resourceLabel || fileIndex}`) || `hero-${fileIndex + 1}`}`,
     name: heroName,
+    rulesetId: "wbc3-10323",
     raceId,
     classId,
     level: bytes.readUInt16LE(52),
     portraitId: bytes.readUInt16LE(88),
+    avatarId,
     statAllocation: {
       strength: Math.max(0, actualStats.strength - startingStats.strength),
       dexterity: Math.max(0, actualStats.dexterity - startingStats.dexterity),
@@ -174,6 +179,7 @@ function parseHero(bytes, resourceName, fileIndex = 0) {
       nextLevelXp: bytes.readUInt32LE(60),
       heroMode: bytes.readUInt32LE(84),
       heroFace: bytes.readUInt16LE(88),
+      avatarCode,
       stats: actualStats,
     },
   };
@@ -206,6 +212,10 @@ function createDecryptionArray() {
 
 function readCString(buffer, offset, length) {
   return buffer.toString("latin1", offset, offset + length).split("\0")[0];
+}
+
+function readFourCC(buffer, offset) {
+  return buffer.toString("latin1", offset, offset + 4).replace(/\0/g, "");
 }
 
 function slug(value) {

@@ -10,6 +10,9 @@ const GAME_FOLDER_NAME = "Warlords Battlecry III";
 const HERO_DATA_RELATIVE_PATH = join(GAME_FOLDER_NAME, "HeroData.xcr");
 const PORTRAIT_ARCHIVE_RELATIVE_PATH = join("Assets", "Heroes", "Portraits.xcr");
 const GRAPHICS_ARCHIVE_RELATIVE_PATH = join("Assets", "Graphics.xcr");
+const SIDE_ARCHIVE_RELATIVE_DIR = join("Assets", "Sides");
+const EFFECT_ARCHIVE_RELATIVE_DIR = join("Assets", "Effects");
+const TERRAIN_ARCHIVE_RELATIVE_DIR = join("Assets", "Terrain");
 
 export async function resolvePortraitArchivePath(explicitPath, gameInstallDir) {
   return resolveGameArchivePath(explicitPath, PORTRAIT_ARCHIVE_RELATIVE_PATH, "Portraits.xcr", gameInstallDir);
@@ -17,6 +20,18 @@ export async function resolvePortraitArchivePath(explicitPath, gameInstallDir) {
 
 export async function resolveGraphicsArchivePath(explicitPath, gameInstallDir) {
   return resolveGameArchivePath(explicitPath, GRAPHICS_ARCHIVE_RELATIVE_PATH, "Graphics.xcr", gameInstallDir);
+}
+
+export async function resolveSideArchivePath(archiveName, gameInstallDir) {
+  return resolveGameAssetArchivePath(archiveName, SIDE_ARCHIVE_RELATIVE_DIR, "side", gameInstallDir);
+}
+
+export async function resolveEffectArchivePath(archiveName, gameInstallDir) {
+  return resolveGameAssetArchivePath(archiveName, EFFECT_ARCHIVE_RELATIVE_DIR, "effect", gameInstallDir);
+}
+
+export async function resolveTerrainArchivePath(archiveName, gameInstallDir) {
+  return resolveGameAssetArchivePath(archiveName, TERRAIN_ARCHIVE_RELATIVE_DIR, "terrain", gameInstallDir);
 }
 
 export async function resolveHeroDataArchivePath(explicitPath) {
@@ -54,6 +69,18 @@ async function resolveGameArchivePath(explicitPath, relativeArchivePath, archive
   if (await isFile(archivePath)) return archivePath;
 
   throw new Error(`Could not locate ${archiveName} under ${gameDir}. Pass the archive path as the first argument.`);
+}
+
+async function resolveGameAssetArchivePath(archiveName, relativeArchiveDirectory, label, gameInstallDir) {
+  if (!/^[a-z0-9 _-]+\.xcr$/i.test(String(archiveName ?? ""))) {
+    throw new Error(`Invalid ${label} archive name: ${archiveName}`);
+  }
+
+  const gameDir = await resolveGameInstallDir(gameInstallDir);
+  const archivePath = join(gameDir, relativeArchiveDirectory, archiveName);
+  if (await isFile(archivePath)) return archivePath;
+
+  throw new Error(`Could not locate ${archiveName} under ${join(gameDir, relativeArchiveDirectory)}.`);
 }
 
 export async function resolveGameInstallDir(explicitPath) {

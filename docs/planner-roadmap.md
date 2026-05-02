@@ -6,6 +6,7 @@ Keep future additions verified against game behavior before making them visible 
 
 ## Spells And Spellbooks
 
+- Protectors spell purchase and spell-tree point spending are not implemented in the ruleset selector slice.
 - Spell lists by magic sphere, including spell level, name, description, targeting rules, mana cost, cast chance, and cooldown or repeat timing.
 - Spell unlock rules from magic skill rank, including edge cases for rank 0 and high rank scaling.
 - Spell effect formulas such as damage, healing, summon strength, duration, radius, projectile behavior, buffs, debuffs, and dispel rules.
@@ -14,6 +15,7 @@ Keep future additions verified against game behavior before making them visible 
 
 ## Items And Equipment
 
+- Protectors item, perk, culture, and faction systems remain out of scope for the first Protectors builder slice.
 - Equipment slots and whether heroes can equip multiple item types at once.
 - Item stat bonuses, skill bonuses, resistance bonuses, special effects, and active-use effects.
 - Item restrictions by class, race, alignment, level, or item category.
@@ -54,6 +56,7 @@ Keep future additions verified against game behavior before making them visible 
 ## Save Import And Export
 
 - Imported hero data currently covers identity, race, class, level, portrait, primary stats, skill ranks, and a few original fields.
+- Current local hero import is vanilla-only and marks imported builds as `WBC3 10323`; Protectors hero-file parsing is a future task.
 - Missing import fields may include inventory, learned spells, campaign flags, retinue, difficulty/mode flags, custom names with unusual characters, and unknown reserved bytes.
 - More defensive parsing can be added as more sample hero files are tested.
 - UI ideas: import diagnostics, exportable planner JSON, shareable build strings, and a restore point before overwriting any saved planner build.

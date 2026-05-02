@@ -1,7 +1,34 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { importedHeroBuilds } from "../src/data/importedHeroBuilds.js";
 import { getDefaultPortraitId, getPortraitFileName, getPortraitOptions } from "../src/data/portraits.js";
+import {
+  avatarIdsByRace,
+  getAllAvatarOptions,
+  getAvailableHeroAnimationTypes,
+  getCommandRadiusSceneMetrics,
+  getDefaultAvatarId,
+  heroAnimationTypes,
+  DEFAULT_HERO_ANIMATION_ID,
+  normalizeHeroAnimationId,
+  normalizeAvatarId,
+} from "../src/data/heroAvatars.js";
 import { HERO_MAX_LEVEL, heroClasses, races, skills } from "../src/data/gameData.js";
+import {
+  HERO_SKILL_SLOT_COUNT as PROTECTORS_SKILL_SLOT_COUNT,
+  heroClasses as protectorsClasses,
+  races as protectorsRaces,
+  skills as protectorsSkills,
+} from "../src/data/protectorsData.js";
+import {
+  defaultSpellPreviewId,
+  getSpellPreview,
+  getSpellPreviewEffectIds,
+  spellPreviewSpells,
+} from "../src/data/spellEffects.js";
+import { readAvatarAnimationAsset, readEffectAnimationAsset, readSpriteAnimationAsset } from "./wbc3-animation-reader.mjs";
+import { readTerrainTileAsset } from "./wbc3-terrain-reader.mjs";
+import { parseItemConfig, readItemCatalog } from "./wbc3-items-reader.mjs";
 import {
   calculateAttackSpeed,
   calculateArmyLimitBonus,
@@ -25,6 +52,25 @@ import {
   mergeCareerSkills,
   validateSkillAllocation,
 } from "../src/rules/plannerRules.js";
+import {
+  calculateHeroSummary as calculateProtectorsHeroSummary,
+  calculateStartingStats as calculateProtectorsStartingStats,
+  getAvailableSkillUnlocks as getProtectorsAvailableSkillUnlocks,
+  getExperienceForLevel as getProtectorsExperienceForLevel,
+  getPointBudget as getProtectorsPointBudget,
+  getTotalSkillPointsForLevel as getProtectorsTotalSkillPointsForLevel,
+  mergeCareerSkills as mergeProtectorsCareerSkills,
+  validateSkillAllocation as validateProtectorsSkillAllocation,
+  validateStatAllocation as validateProtectorsStatAllocation,
+  calculateSkillEffectList as calculateProtectorsSkillEffectList,
+} from "../src/rules/protectorsRules.js";
+import {
+  PROTECTORS_RULESET_ID,
+  VANILLA_RULESET_ID,
+  getRuleset,
+  normalizeRulesetId,
+  rulesetOptions,
+} from "../src/rules/rulesets.js";
 
 const baseBuild = {
   raceId: "barbarian",
@@ -44,6 +90,129 @@ assert.equal(getDefaultPortraitId("knight"), 0);
 assert.equal(getDefaultPortraitId("plaguelord"), 15);
 assert.equal(getPortraitFileName(7), "Portrait07.bmp");
 assert.deepEqual(getPortraitOptions("ssrathi"), [13, 82, 84]);
+assert.equal(getDefaultAvatarId("knight"), "AHHX");
+assert.equal(getDefaultAvatarId("plaguelord"), "AHH1");
+assert.deepEqual(avatarIdsByRace.knight, ["AHHX", "AFHX", "AHH0", "AHH1", "AEHX", "APHX"]);
+assert.deepEqual(avatarIdsByRace.ssrathi, ["ALHX"]);
+assert.equal(getAllAvatarOptions().some((avatar) => avatar.id === "AVHX"), true);
+assert.equal(getAllAvatarOptions().some((avatar) => avatar.id === "AGHY"), true);
+assert.equal(normalizeAvatarId("knight", "AVHX"), "AVHX");
+assert.deepEqual(
+  getAvailableHeroAnimationTypes("AHHX").map((animation) => animation.id),
+  ["stand", "walk", "fight", "die", "ambient", "convert", "spell", "interface"],
+);
+assert.equal(getAvailableHeroAnimationTypes("AHHX").some((animation) => animation.id === "special"), false);
+assert.deepEqual(
+  getAvailableHeroAnimationTypes("ATHX").map((animation) => animation.id),
+  ["stand", "walk", "fight", "die", "interface"],
+);
+assert.equal(DEFAULT_HERO_ANIMATION_ID, "ambient");
+assert.equal(normalizeHeroAnimationId("ATHX", "spell"), "stand");
+assert.deepEqual(
+  heroAnimationTypes.map((animation) => animation.id),
+  ["stand", "walk", "fight", "die", "ambient", "special", "convert", "spell", "interface"],
+);
+assert.equal(defaultSpellPreviewId, "healSelf");
+assert.equal(spellPreviewSpells.length, 140);
+assert.equal(getSpellPreview("destruction").label, "Destruction");
+assert.deepEqual(getSpellPreviewEffectIds(getSpellPreview("destruction")), ["EARC", "EX01"]);
+assert.equal(getSpellPreview("not-real").id, "healSelf");
+
+assert.deepEqual(
+  rulesetOptions.map((ruleset) => ruleset.id),
+  [VANILLA_RULESET_ID, PROTECTORS_RULESET_ID],
+);
+assert.equal(normalizeRulesetId("not-real"), VANILLA_RULESET_ID);
+assert.equal(getRuleset(PROTECTORS_RULESET_ID).label, "The Protectors");
+assert.equal(protectorsRaces.length, 16, "Protectors data includes 16 hero races");
+assert.equal(protectorsClasses.length, 34, "Protectors data includes 34 hero classes");
+assert.equal(protectorsClasses.some((heroClass) => heroClass.id === "warlock"), true);
+assert.equal(protectorsClasses[5].id, "warlock");
+assert.equal(PROTECTORS_SKILL_SLOT_COUNT, 11);
+assert.equal(protectorsSkills.some((skill) => skill.id === "magicContagion"), true);
+assert.deepEqual(calculateProtectorsStartingStats("knight", "warrior"), {
+  strength: 8,
+  dexterity: 3,
+  intelligence: 2,
+  charisma: 7,
+});
+assert.deepEqual(calculateProtectorsStartingStats("barbarian", "chieftain"), {
+  strength: 10,
+  dexterity: 9,
+  intelligence: -2,
+  charisma: 3,
+});
+assert.equal(getProtectorsExperienceForLevel(1), 0);
+assert.equal(getProtectorsExperienceForLevel(2), 75);
+assert.equal(getProtectorsExperienceForLevel(10), 6075);
+assert.equal(getProtectorsTotalSkillPointsForLevel(1), 5);
+assert.equal(getProtectorsTotalSkillPointsForLevel(10), 50);
+assert.equal(getProtectorsTotalSkillPointsForLevel(20), 90);
+assert.equal(getProtectorsTotalSkillPointsForLevel(40), 150);
+assert.equal(getProtectorsTotalSkillPointsForLevel(50), 170);
+
+const protectorsBuild = {
+  rulesetId: PROTECTORS_RULESET_ID,
+  raceId: "minotaur",
+  classId: "chieftain",
+  level: 10,
+  statAllocation: { strength: 5, dexterity: 0, intelligence: 0, charisma: 0 },
+  skillAllocation: { ferocity: 40 },
+};
+assert.deepEqual(getProtectorsPointBudget(protectorsBuild), {
+  mode: "shared",
+  label: "Hero Points",
+  statLabel: "Stats",
+  skillLabel: "Skills",
+  available: 50,
+  spent: 50,
+  remaining: 0,
+  statSpent: 5,
+  skillSpent: 40,
+  statCost: 2,
+  skillCost: 1,
+});
+assert.equal(validateProtectorsStatAllocation({ ...protectorsBuild, statAllocation: { strength: 6 } }).valid, false);
+assert.equal(validateProtectorsSkillAllocation({ ...protectorsBuild, skillAllocation: { ferocity: 41 } }).valid, false);
+const protectorsMergedFerocity = mergeProtectorsCareerSkills("minotaur", "chieftain").find((skill) => skill.skillId === "ferocity");
+assert.equal(protectorsMergedFerocity.availableAt, 1);
+assert.equal(protectorsMergedFerocity.startingLevel, 0);
+assert.equal(protectorsMergedFerocity.rawStartingLevel, 4);
+assert.deepEqual([...protectorsMergedFerocity.mergedFrom].sort(), ["class", "race"]);
+assert.equal(getProtectorsAvailableSkillUnlocks({ ...protectorsBuild, classId: "ranger" }).length, 11);
+assert.equal(getProtectorsAvailableSkillUnlocks({ ...protectorsBuild, classId: "ranger" }).at(-1).skillId, "woodcraft");
+assert.equal(calculateProtectorsHeroSummary({ ...protectorsBuild, level: 20 }).xpForLevel, 27075);
+const missingProtectorsSkillDescriptions = protectorsSkills
+  .filter((skill) => skill.id !== "null")
+  .filter((skill) => calculateProtectorsSkillEffectList({ [skill.id]: 1 }, { includeInactive: true }).length === 0)
+  .map((skill) => skill.id);
+assert.deepEqual(missingProtectorsSkillDescriptions, []);
+
+const appSource = await readFile(new URL("../src/app.js", import.meta.url), "utf8");
+assert.match(appSource, /class="rules-menu"/);
+assert.match(appSource, /data-ruleset-id/);
+assert.match(appSource, /rulesetStorageKey/);
+assert.match(appSource, /function loadSavedBuild/);
+assert.match(appSource, /activeRulesetId = normalizeRulesetId\(savedBuild\.rulesetId\)/);
+assert.match(appSource, /fallbackRulesetId = VANILLA_RULESET_ID/);
+assert.match(appSource, /value\.rulesetId \?\? fallbackRulesetId/);
+assert.match(appSource, /width="\$\{heroPreviewLogicalWidth \* heroPreviewResolutionScale\}"/);
+assert.match(appSource, /id="hero-preview-zoom" type="range" min="1" max="4"/);
+assert.match(appSource, /api\/local\/terrain-tile/);
+assert.match(appSource, /api\/local\/effect/);
+assert.match(appSource, /api\/local\/items/);
+assert.match(appSource, /hero-spell-select/);
+assert.match(appSource, /data-hero-rotate/);
+assert.match(appSource, /spellSpheresPanel\(summary\)/);
+assert.match(appSource, /itemsPanel\(\)/);
+assert.doesNotMatch(appSource, /4:3 preview \/ \$\{escapeHtml\(animation\.label\)\}/);
+assert.deepEqual(getCommandRadiusSceneMetrics(25), {
+  radius: 19,
+  radiusX: 608,
+  radiusY: 456,
+  diameterX: 1216,
+  diameterY: 912,
+});
 
 assert.deepEqual(calculateStartingStats("knight", "warrior"), {
   strength: 7,
@@ -318,5 +487,72 @@ assert.equal(
   }).conversionTime,
   calculateHeroSummary({ ...baseBuild, level: 20 }).conversionTime,
 );
+
+const parsedItemConfig = parseItemConfig(`
+[TREASURES]
+000 0 0 01 6 Sirian's Greatsword
+010 9 1 05 6 The Snakeskin Boots
+[SETS]
+`);
+assert.equal(parsedItemConfig.items.length, 2);
+assert.deepEqual(parsedItemConfig.items.map((item) => [item.name, item.typeLabel, item.powerLabel, item.value]), [
+  ["Sirian's Greatsword", "Sword", "Combat", 6],
+  ["The Snakeskin Boots", "Boots", "Speed", 6],
+]);
+
+try {
+  const avatarAsset = await readAvatarAnimationAsset({ avatarId: "AHHX", animationId: "walk" });
+  assert.equal(avatarAsset.ok, true);
+  assert.equal(avatarAsset.available, true);
+  assert.equal(avatarAsset.avatar.archive, "Knights.xcr");
+  assert.equal(avatarAsset.animation.index, 1);
+  assert.equal(avatarAsset.frameCount > 0, true);
+  assert.equal(avatarAsset.frameWidth > 0, true);
+  assert.equal(avatarAsset.frameHeight > 0, true);
+  assert.equal(avatarAsset.visiblePixelCount > 10000, true);
+  assert.equal(avatarAsset.imageSrc.startsWith("data:image/png;base64,iVBORw0KGgo"), true);
+
+  const goldMineAsset = await readSpriteAnimationAsset({
+    spriteId: "BRG0",
+    archiveName: "Resources.xcr",
+    animationId: "ambient",
+  });
+  assert.equal(goldMineAsset.ok, true);
+  assert.equal(goldMineAsset.available, true);
+  assert.equal(goldMineAsset.frameWidth > 0, true);
+  assert.equal(goldMineAsset.frameHeight > 0, true);
+  assert.equal(goldMineAsset.visiblePixelCount > 10000, true);
+
+  const grassTileAsset = await readTerrainTileAsset();
+  assert.equal(grassTileAsset.ok, true);
+  assert.equal(grassTileAsset.available, true);
+  assert.equal(grassTileAsset.width, 320);
+  assert.equal(grassTileAsset.height, 240);
+  assert.equal(grassTileAsset.imageSrc.startsWith("data:image/png;base64,iVBORw0KGgo"), true);
+
+  const itemCatalog = await readItemCatalog();
+  assert.equal(itemCatalog.ok, true);
+  assert.equal(itemCatalog.available, true);
+  assert.equal(itemCatalog.items.length, 24);
+  assert.equal(itemCatalog.items[0].name, "Sirian's Greatsword");
+  assert.equal(itemCatalog.items[10].powerLabel, "Speed");
+
+  const healingEffectAsset = await readEffectAnimationAsset({ effectId: "EZ11" });
+  assert.equal(healingEffectAsset.ok, true);
+  assert.equal(healingEffectAsset.available, true);
+  assert.equal(healingEffectAsset.frameCount > 0, true);
+  assert.equal(healingEffectAsset.visiblePixelCount > 1000, true);
+
+  const aliasedEffectAsset = await readEffectAnimationAsset({ effectId: "EILU" });
+  assert.equal(aliasedEffectAsset.ok, true);
+  assert.equal(aliasedEffectAsset.available, true);
+  assert.equal(aliasedEffectAsset.effectId, "EILU");
+  assert.equal(aliasedEffectAsset.resolvedEffectId, "EZ00");
+} catch (error) {
+  if (!/Could not locate/i.test(error instanceof Error ? error.message : String(error))) {
+    throw error;
+  }
+  console.warn("Skipped avatar decode test because WBC3 side archives were not found.");
+}
 
 console.log("All verified planner tests passed.");

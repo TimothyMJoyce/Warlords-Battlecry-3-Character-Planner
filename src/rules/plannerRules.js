@@ -195,6 +195,23 @@ export function validateStatAllocation(build) {
   };
 }
 
+export function getPointBudget(build) {
+  const statValidation = validateStatAllocation(build);
+  const skillValidation = validateSkillAllocation(build);
+  return {
+    mode: "separate",
+    label: "Points",
+    statLabel: "Stat Points",
+    skillLabel: "Skill Points",
+    statSpent: statValidation.spent,
+    statAvailable: statValidation.available,
+    skillSpent: skillValidation.spent,
+    skillAvailable: skillValidation.available,
+    statCost: 1,
+    skillCost: 1,
+  };
+}
+
 export function calculateHeroSummary(build) {
   const level = clampLevel(build.level);
   const heroClass = getHeroClass(build.classId);

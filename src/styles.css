@@ -1,6 +1,36 @@
 :root {
-  color-scheme: light;
+  color-scheme: dark;
   font-family: Inter, "Segoe UI", Arial, sans-serif;
+  --bg: #101715;
+  --ink: #e8f1ed;
+  --muted: #9eb0ab;
+  --panel: #17211f;
+  --line: #33423e;
+  --green: #83c8b6;
+  --blue: #87bfdc;
+  --gold: #d0a05a;
+  --red: #ef8b8f;
+  --shadow: 0 18px 45px rgba(0, 0, 0, 0.32);
+  --bg-tint-a: rgba(131, 200, 182, 0.1);
+  --bg-tint-b: rgba(135, 191, 220, 0.1);
+  --button-bg: #22302d;
+  --button-muted-bg: #293936;
+  --control-bg: #1d2926;
+  --panel-soft: #202d2a;
+  --pill-bg: rgba(29, 41, 38, 0.84);
+  --active-bg: #1b3340;
+  --valid-bg: #183428;
+  --error-bg: #382023;
+  --image-bg: #111a18;
+  --on-accent: #ffffff;
+  --tooltip-bg: #eef6f2;
+  --tooltip-ink: #14201f;
+  --menu-shadow: 0 18px 42px rgba(0, 0, 0, 0.38);
+  --portrait-shadow: 0 12px 26px rgba(0, 0, 0, 0.28);
+}
+
+html[data-theme="light"] {
+  color-scheme: light;
   --bg: #eef2f0;
   --ink: #14201f;
   --muted: #5e6c6c;
@@ -11,6 +41,22 @@
   --gold: #a56b2c;
   --red: #8b2f32;
   --shadow: 0 18px 45px rgba(20, 32, 31, 0.12);
+  --bg-tint-a: rgba(36, 79, 69, 0.12);
+  --bg-tint-b: rgba(40, 90, 117, 0.12);
+  --button-bg: #f7faf9;
+  --button-muted-bg: #edf3f1;
+  --control-bg: #fbfdfc;
+  --panel-soft: #f8fbfb;
+  --pill-bg: rgba(255, 255, 255, 0.7);
+  --active-bg: #f2f8fa;
+  --valid-bg: #f3faf6;
+  --error-bg: #fff6f5;
+  --image-bg: #e8eeec;
+  --on-accent: #ffffff;
+  --tooltip-bg: #14201f;
+  --tooltip-ink: #ffffff;
+  --menu-shadow: 0 18px 42px rgba(20, 32, 31, 0.2);
+  --portrait-shadow: 0 12px 26px rgba(20, 32, 31, 0.16);
 }
 
 * {
@@ -22,8 +68,8 @@ body {
   min-width: 320px;
   min-height: 100vh;
   background:
-    linear-gradient(135deg, rgba(36, 79, 69, 0.12), transparent 32%),
-    linear-gradient(315deg, rgba(40, 90, 117, 0.12), transparent 36%),
+    linear-gradient(135deg, var(--bg-tint-a), transparent 32%),
+    linear-gradient(315deg, var(--bg-tint-b), transparent 36%),
     var(--bg);
   color: var(--ink);
 }
@@ -36,7 +82,7 @@ select {
 
 button {
   border: 1px solid var(--line);
-  background: #f7faf9;
+  background: var(--button-bg);
   color: var(--ink);
   cursor: pointer;
 }
@@ -73,13 +119,73 @@ h2 {
   font-size: 1rem;
 }
 
-.rules-pill {
-  border: 1px solid var(--line);
+.theme-toggle {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
   border-radius: 999px;
-  padding: 8px 12px;
-  background: rgba(255, 255, 255, 0.7);
-  color: var(--muted);
+  padding: 0;
+  background: var(--pill-bg);
+}
+
+.theme-toggle:hover {
+  border-color: var(--blue);
+}
+
+.theme-icon {
+  position: relative;
+  width: 20px;
+  height: 20px;
+}
+
+.theme-icon::before,
+.theme-icon::after {
+  content: "";
+  position: absolute;
+  display: block;
+}
+
+html[data-theme="dark"] .theme-icon::before {
+  inset: 1px;
+  border-radius: 999px;
+  background: var(--gold);
+}
+
+html[data-theme="dark"] .theme-icon::after {
+  top: -1px;
+  right: -1px;
+  width: 17px;
+  height: 17px;
+  border-radius: 999px;
+  background: var(--pill-bg);
+}
+
+html[data-theme="light"] .theme-icon::before {
+  inset: 5px;
+  border-radius: 999px;
+  background: var(--gold);
+}
+
+html[data-theme="light"] .theme-icon::after {
+  inset: -1px;
+  border-radius: 999px;
+  background: repeating-conic-gradient(var(--gold) 0 12deg, transparent 12deg 45deg);
+  -webkit-mask: radial-gradient(transparent 0 8px, #000 8px);
+  mask: radial-gradient(transparent 0 8px, #000 8px);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
   white-space: nowrap;
+  border: 0;
 }
 
 .top-actions {
@@ -89,11 +195,13 @@ h2 {
   gap: 10px;
 }
 
+.rules-menu,
 .saved-menu,
 .settings-menu {
   position: relative;
 }
 
+.rules-menu summary,
 .saved-menu summary,
 .settings-menu summary {
   display: flex;
@@ -102,17 +210,19 @@ h2 {
   border: 1px solid var(--line);
   border-radius: 999px;
   padding: 8px 12px;
-  background: #fbfdfc;
+  background: var(--control-bg);
   cursor: pointer;
   list-style: none;
   white-space: nowrap;
 }
 
+.rules-menu summary::-webkit-details-marker,
 .saved-menu summary::-webkit-details-marker,
 .settings-menu summary::-webkit-details-marker {
   display: none;
 }
 
+.rules-menu summary::after,
 .saved-menu summary::after,
 .settings-menu summary::after {
   content: "";
@@ -123,23 +233,27 @@ h2 {
   border-top: 6px solid var(--muted);
 }
 
+.rules-menu[open] summary,
 .saved-menu[open] summary,
 .settings-menu[open] summary {
   border-color: var(--blue);
-  background: #f2f8fa;
+  background: var(--active-bg);
 }
 
+.rules-menu[open] summary::after,
 .saved-menu[open] summary::after,
 .settings-menu[open] summary::after {
   transform: rotate(180deg);
 }
 
+.rules-menu summary span,
 .saved-menu summary span,
 .settings-menu summary span {
   color: var(--ink);
   font-weight: 800;
 }
 
+.rules-menu summary strong,
 .saved-menu summary strong,
 .settings-menu summary strong {
   display: inline-grid;
@@ -148,7 +262,7 @@ h2 {
   height: 22px;
   border-radius: 999px;
   background: var(--blue);
-  color: #ffffff;
+  color: var(--on-accent);
   font-size: 0.78rem;
 }
 
@@ -162,7 +276,7 @@ h2 {
   border-radius: 8px;
   padding: 12px;
   background: var(--panel);
-  box-shadow: 0 18px 42px rgba(20, 32, 31, 0.2);
+  box-shadow: var(--menu-shadow);
 }
 
 .settings-panel h3 {
@@ -219,12 +333,12 @@ h2 {
 
 .settings-field.is-valid input {
   border-color: var(--green);
-  background: #f3faf6;
+  background: var(--valid-bg);
 }
 
 .settings-field.is-missing input {
   border-color: var(--red);
-  background: #fff6f5;
+  background: var(--error-bg);
 }
 
 .settings-field small {
@@ -256,6 +370,7 @@ h2 {
   font-size: 0.84rem;
 }
 
+.rules-menu-panel,
 .saved-menu-panel {
   position: absolute;
   z-index: 30;
@@ -268,16 +383,60 @@ h2 {
   border-radius: 8px;
   padding: 12px;
   background: var(--panel);
-  box-shadow: 0 18px 42px rgba(20, 32, 31, 0.2);
+  box-shadow: var(--menu-shadow);
+}
+
+.rules-menu-panel {
+  width: min(260px, calc(100vw - 32px));
+  max-height: none;
+  overflow-y: visible;
+  display: grid;
+  gap: 10px;
+}
+
+.rules-menu-panel h3 {
+  margin: 0;
+  color: var(--green);
+  font-size: 0.92rem;
+}
+
+.ruleset-list {
+  display: grid;
+  gap: 8px;
+}
+
+.ruleset-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--control-bg);
+  color: var(--ink);
+  text-align: left;
+}
+
+.ruleset-option.is-selected {
+  border-color: var(--blue);
+  background: var(--active-bg);
+}
+
+.ruleset-option strong {
+  color: var(--blue);
+  font-size: 0.78rem;
 }
 
 .builder-grid {
   display: grid;
-  grid-template-columns: 280px minmax(260px, 320px) minmax(220px, 300px) minmax(320px, 1fr);
+  grid-template-columns: 280px minmax(240px, 320px) minmax(320px, 1fr) minmax(280px, 360px);
   grid-template-areas:
-    "identity stats strength dexterity"
-    "identity stats intelligence charisma"
-    "skills skills skills skills";
+    "identity strength dexterity charisma"
+    "identity intelligence dexterity charisma"
+    "skills skills skills skills"
+    "spells spells spells spells"
+    "items items items items";
   gap: 16px;
   align-items: stretch;
 }
@@ -293,10 +452,6 @@ h2 {
 .identity-panel {
   grid-area: identity;
   align-self: start;
-}
-
-.stats-panel {
-  grid-area: stats;
 }
 
 .charisma-panel {
@@ -319,6 +474,14 @@ h2 {
   grid-area: skills;
 }
 
+.spells-panel {
+  grid-area: spells;
+}
+
+.items-panel {
+  grid-area: items;
+}
+
 .panel-heading {
   display: flex;
   align-items: center;
@@ -331,6 +494,182 @@ h2 {
 .panel-heading span {
   color: var(--muted);
   font-weight: 800;
+}
+
+.hero-preview-panel {
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+
+.hero-preview-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  color: var(--green);
+  list-style: none;
+}
+
+.hero-preview-summary::-webkit-details-marker {
+  display: none;
+}
+
+.hero-preview-summary::after {
+  content: "Open";
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 5px 10px;
+  color: var(--text);
+  background: var(--panel-soft);
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.hero-preview-panel[open] .hero-preview-summary::after {
+  content: "Close";
+}
+
+.hero-preview-summary > div {
+  display: grid;
+  gap: 4px;
+}
+
+.hero-preview-summary h2,
+.hero-preview-heading h3 {
+  margin: 0;
+}
+
+.hero-preview-summary span {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.hero-preview-summary > strong {
+  margin-left: auto;
+  color: var(--blue);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.hero-preview-body {
+  margin-top: 14px;
+}
+
+.hero-preview-heading {
+  align-items: flex-start;
+}
+
+.hero-preview-heading > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.hero-preview-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 12px;
+}
+
+.hero-preview-controls label {
+  display: grid;
+  gap: 5px;
+}
+
+.hero-preview-controls label span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.hero-preview-controls select,
+.hero-preview-zoom-control input {
+  padding: 8px 10px;
+}
+
+.hero-preview-zoom-control div {
+  display: grid;
+  grid-template-columns: 1fr 48px;
+  gap: 8px;
+  align-items: center;
+}
+
+.hero-preview-zoom-control strong {
+  color: var(--text);
+  font-size: 0.84rem;
+  text-align: right;
+}
+
+.hero-preview-stage {
+  position: relative;
+  border: 1px solid #9eb0aa;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #afc0a8;
+  width: min(100%, 1216px);
+  margin: 0 auto;
+}
+
+#hero-preview-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 4 / 3;
+}
+
+.hero-preview-readout {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  max-width: calc(100% - 24px);
+}
+
+.hero-rotate-gizmo {
+  position: absolute;
+  top: calc(50% - 18px);
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  border-color: rgba(255, 255, 255, 0.46);
+  background: rgba(20, 32, 31, 0.72);
+  color: #ffffff;
+  font-size: 1.25rem;
+  font-weight: 900;
+  line-height: 1;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.26);
+}
+
+.hero-rotate-gizmo:hover,
+.hero-rotate-gizmo:focus {
+  border-color: #ffffff;
+  background: rgba(28, 111, 190, 0.82);
+}
+
+.hero-rotate-clockwise {
+  left: calc(50% - 86px);
+}
+
+.hero-rotate-anticlockwise {
+  right: calc(50% - 86px);
+}
+
+.hero-preview-readout span {
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  border-radius: 999px;
+  padding: 5px 8px;
+  background: rgba(20, 32, 31, 0.72);
+  color: #ffffff;
+  font-size: 0.74rem;
+  font-weight: 900;
+  white-space: nowrap;
 }
 
 .reset-build-button {
@@ -378,7 +717,7 @@ input {
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 10px 11px;
-  background: #fbfdfc;
+  background: var(--control-bg);
   color: var(--ink);
 }
 
@@ -421,7 +760,7 @@ input {
 .saved-row img {
   border: 1px solid var(--line);
   border-radius: 6px;
-  background: #e8eeec;
+  background: var(--image-bg);
   image-rendering: auto;
   object-fit: contain;
 }
@@ -453,7 +792,7 @@ input {
   aspect-ratio: 1;
   height: auto;
   border-color: var(--green);
-  box-shadow: 0 12px 26px rgba(20, 32, 31, 0.16);
+  box-shadow: var(--portrait-shadow);
 }
 
 .portrait-menu summary span {
@@ -478,7 +817,7 @@ input {
   border-radius: 8px;
   padding: 8px;
   background: var(--panel);
-  box-shadow: 0 14px 30px rgba(20, 32, 31, 0.18);
+  box-shadow: var(--menu-shadow);
 }
 
 .portrait-option {
@@ -487,12 +826,12 @@ input {
   justify-items: center;
   border-radius: 6px;
   padding: 5px 4px;
-  background: #f7faf9;
+  background: var(--button-bg);
 }
 
 .portrait-option.is-selected {
   border-color: var(--blue);
-  background: #eef7fb;
+  background: var(--active-bg);
   box-shadow: inset 0 0 0 1px var(--blue);
 }
 
@@ -547,7 +886,7 @@ input {
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 9px;
-  background: #fbfdfc;
+  background: var(--control-bg);
 }
 
 .saved-row img {
@@ -557,7 +896,7 @@ input {
 
 .saved-row.is-active {
   border-color: var(--blue);
-  background: #f2f8fa;
+  background: var(--active-bg);
 }
 
 .saved-row strong,
@@ -581,11 +920,6 @@ input {
   color: var(--red);
 }
 
-.stat-grid {
-  display: grid;
-  gap: 10px;
-}
-
 .stat-row {
   display: grid;
   grid-template-columns: minmax(150px, 1fr) 116px 56px;
@@ -594,7 +928,7 @@ input {
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 10px;
-  background: #fbfdfc;
+  background: var(--control-bg);
 }
 
 .skill-row {
@@ -605,7 +939,7 @@ input {
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 10px;
-  background: #fbfdfc;
+  background: var(--control-bg);
 }
 
 .skill-info {
@@ -619,38 +953,42 @@ input {
   overflow-wrap: anywhere;
 }
 
-.stats-panel {
-  padding: 14px;
-}
-
-.stats-panel .panel-heading {
-  margin-bottom: 10px;
-}
-
-.stats-panel .stat-grid {
-  gap: 8px;
-}
-
-.stats-panel .stat-row {
+.strength-panel .stat-row,
+.intelligence-panel .stat-row,
+.dexterity-panel .stat-row,
+.charisma-panel .stat-row {
   grid-template-columns: minmax(0, 1fr) 94px 38px;
   gap: 8px;
+  margin-bottom: 10px;
   padding: 8px;
 }
 
-.stats-panel .stat-row span {
+.strength-panel .stat-row span,
+.intelligence-panel .stat-row span,
+.dexterity-panel .stat-row span,
+.charisma-panel .stat-row span {
   font-size: 0.76rem;
 }
 
-.stats-panel .stepper {
+.strength-panel .stepper,
+.intelligence-panel .stepper,
+.dexterity-panel .stepper,
+.charisma-panel .stepper {
   grid-template-columns: 28px 1fr 28px;
 }
 
-.stats-panel .stepper button {
+.strength-panel .stepper button,
+.intelligence-panel .stepper button,
+.dexterity-panel .stepper button,
+.charisma-panel .stepper button {
   width: 28px;
   height: 28px;
 }
 
-.stats-panel output {
+.strength-panel output,
+.intelligence-panel output,
+.dexterity-panel output,
+.charisma-panel output {
   font-size: 1rem;
 }
 
@@ -688,7 +1026,7 @@ input {
   height: 32px;
   border: 0;
   border-radius: 0;
-  background: #edf3f1;
+  background: var(--button-muted-bg);
   font-weight: 900;
 }
 
@@ -696,6 +1034,17 @@ input {
   text-align: center;
   color: var(--ink);
   font-weight: 800;
+}
+
+.passive-skill {
+  display: inline-grid;
+  place-items: center;
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--active-bg);
+  color: var(--blue);
+  font-weight: 900;
 }
 
 output {
@@ -723,7 +1072,7 @@ output {
   border-left: 4px solid var(--gold);
   border-radius: 6px;
   padding: 8px 10px;
-  background: #f8fbfb;
+  background: var(--panel-soft);
 }
 
 .morale-effects {
@@ -733,7 +1082,7 @@ output {
   border-left: 4px solid var(--gold);
   border-radius: 6px;
   padding: 8px 10px;
-  background: #f8fbfb;
+  background: var(--panel-soft);
 }
 
 .morale-main,
@@ -821,12 +1170,12 @@ output {
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 8px 10px;
-  background: var(--ink);
-  color: #ffffff;
+  background: var(--tooltip-bg);
+  color: var(--tooltip-ink);
   font-size: 0.78rem;
   font-weight: 800;
   line-height: 1.3;
-  box-shadow: 0 12px 28px rgba(20, 32, 31, 0.22);
+  box-shadow: var(--menu-shadow);
   opacity: 0;
   pointer-events: none;
   transform: translateY(4px);
@@ -850,7 +1199,7 @@ output {
   border-left: 4px solid var(--gold);
   border-radius: 6px;
   padding: 10px;
-  background: #f8fbfb;
+  background: var(--panel-soft);
 }
 
 .defense-parent,
@@ -902,7 +1251,7 @@ output {
   border-left: 3px solid var(--blue);
   border-radius: 6px;
   padding: 6px 8px;
-  background: #f8fbfb;
+  background: var(--panel-soft);
 }
 
 .skill-effect-row span,
@@ -932,11 +1281,209 @@ output {
   opacity: 0.62;
 }
 
+.spell-spheres-list {
+  display: grid;
+  gap: 12px;
+}
+
+.spell-sphere-card {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--control-bg);
+}
+
+.spell-sphere-card header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.spell-sphere-card header strong {
+  color: var(--green);
+}
+
+.spell-sphere-card header span {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 900;
+}
+
+.spell-sphere-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.spell-column {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+
+.spell-row {
+  grid-template-columns: minmax(130px, 0.9fr) minmax(210px, 1.2fr) 82px 42px;
+  padding: 8px;
+  background: var(--panel-soft);
+}
+
+.spell-preview-button {
+  border-radius: 6px;
+  padding: 7px 8px;
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.items-panel-grid {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.82fr) minmax(320px, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.equipment-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-areas:
+    ". crown helm necklace ."
+    "weapon armor armor shield banner"
+    ". ring1 boots ring2 .";
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--control-bg);
+}
+
+.equipment-slot {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 4px;
+  min-height: 74px;
+  border-radius: 6px;
+  padding: 8px;
+  background: var(--panel-soft);
+  text-align: center;
+}
+
+.equipment-slot-crown {
+  grid-area: crown;
+}
+
+.equipment-slot-helm {
+  grid-area: helm;
+}
+
+.equipment-slot-necklace {
+  grid-area: necklace;
+}
+
+.equipment-slot-weapon {
+  grid-area: weapon;
+}
+
+.equipment-slot-armor {
+  grid-area: armor;
+}
+
+.equipment-slot-shield {
+  grid-area: shield;
+}
+
+.equipment-slot-banner {
+  grid-area: banner;
+}
+
+.equipment-slot-ring1 {
+  grid-area: ring1;
+}
+
+.equipment-slot-boots {
+  grid-area: boots;
+}
+
+.equipment-slot-ring2 {
+  grid-area: ring2;
+}
+
+.equipment-slot span,
+.equipment-slot small {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.equipment-slot strong {
+  color: var(--ink);
+  font-size: 0.82rem;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
+.equipment-slot.is-equipped {
+  border-color: var(--gold);
+  background: var(--active-bg);
+}
+
+.equipment-slot.is-equipped strong {
+  color: var(--gold);
+}
+
+.item-search-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.item-search-results {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: 8px;
+}
+
+.item-result {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--control-bg);
+  text-align: left;
+}
+
+.item-result span {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.item-result strong {
+  overflow-wrap: anywhere;
+}
+
+.item-result small {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.item-result em {
+  color: var(--blue);
+  font-style: normal;
+  font-size: 0.78rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
 .messages {
   margin-top: 12px;
   border-left: 4px solid var(--red);
   border-radius: 6px;
-  background: #fff6f5;
+  background: var(--error-bg);
   padding: 8px 10px;
 }
 
@@ -951,10 +1498,12 @@ output {
     grid-template-columns: 1fr 1fr;
     grid-template-areas:
       "identity identity"
-      "stats strength"
+      "strength dexterity"
       "intelligence dexterity"
       "charisma charisma"
-      "skills skills";
+      "skills skills"
+      "spells spells"
+      "items items";
   }
 
 }
@@ -962,6 +1511,28 @@ output {
 @media (max-width: 720px) {
   .shell {
     padding: 14px;
+  }
+
+  .hero-preview-heading,
+  .hero-preview-controls,
+  .hero-preview-summary {
+    grid-template-columns: 1fr;
+    display: grid;
+  }
+
+  .hero-preview-summary > strong {
+    margin-left: 0;
+  }
+
+  .hero-preview-readout {
+    position: static;
+    justify-content: flex-start;
+    padding: 8px;
+    background: rgba(20, 32, 31, 0.72);
+  }
+
+  .hero-preview-readout span {
+    background: rgba(20, 32, 31, 0.78);
   }
 
   .topbar,
@@ -975,16 +1546,13 @@ output {
   .builder-grid {
     grid-template-areas:
       "identity"
-      "stats"
       "strength"
       "intelligence"
       "dexterity"
       "charisma"
-      "skills";
-  }
-
-  .rules-pill {
-    justify-self: start;
+      "skills"
+      "spells"
+      "items";
   }
 
   .top-actions {
@@ -992,6 +1560,7 @@ output {
     flex-wrap: wrap;
   }
 
+  .rules-menu-panel,
   .saved-menu-panel {
     right: auto;
     left: 0;
@@ -1002,12 +1571,13 @@ output {
     left: 0;
   }
 
-  .stats-panel,
   .strength-panel,
   .intelligence-panel,
   .dexterity-panel,
   .charisma-panel,
-  .skills-panel {
+  .skills-panel,
+  .spells-panel,
+  .items-panel {
     grid-column: auto;
   }
 
@@ -1015,6 +1585,34 @@ output {
   .skill-row,
   .saved-row {
     grid-template-columns: 1fr;
+  }
+
+  .spell-sphere-columns,
+  .items-panel-grid,
+  .equipment-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .equipment-grid {
+    grid-template-areas:
+      "crown"
+      "helm"
+      "necklace"
+      "weapon"
+      "armor"
+      "shield"
+      "banner"
+      "ring1"
+      "ring2"
+      "boots";
+  }
+
+  .hero-rotate-clockwise {
+    left: calc(50% - 70px);
+  }
+
+  .hero-rotate-anticlockwise {
+    right: calc(50% - 70px);
   }
 
   output {

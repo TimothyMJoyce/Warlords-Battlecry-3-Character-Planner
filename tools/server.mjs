@@ -9,6 +9,9 @@ import {
 } from "./wbc3-paths.mjs";
 import { importHeroBuildsFromHeroData } from "./hero-data-reader.mjs";
 import { readLocalPathSettings, writeLocalPathSettings } from "./local-settings.mjs";
+import { readAvatarAnimationAsset, readEffectAnimationAsset, readSpriteAnimationAsset } from "./wbc3-animation-reader.mjs";
+import { readTerrainTileAsset } from "./wbc3-terrain-reader.mjs";
+import { readItemCatalog } from "./wbc3-items-reader.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const dist = resolve(root, "dist");
@@ -17,6 +20,21 @@ const startingPort =
   Number.isInteger(requestedPort) && requestedPort >= 1 && requestedPort <= 65535 ? requestedPort : 5173;
 const staticRoots = [resolve(root, "src")];
 const staticFiles = new Set([resolve(root, "index.html"), resolve(root, "manifest.webmanifest")]);
+const avatarAssetCache = new Map();
+const sceneObjectAssetCache = new Map();
+const effectAssetCache = new Map();
+const terrainAssetCache = new Map();
+const itemCatalogCache = new Map();
+
+const sceneObjectDefinitions = {
+  goldMine: {
+    id: "goldMine",
+    displayName: "Gold Mine",
+    spriteId: "BRG0",
+    archive: "Resources.xcr",
+    defaultAnimation: "ambient",
+  },
+};
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -53,7 +71,10 @@ const server = createServer(async (request, response) => {
     }
 
     const body = await readFile(filePath);
-    response.writeHead(200, { "Content-Type": mimeTypes[extname(filePath)] ?? "application/octet-stream" });
+    response.writeHead(200, {
+      "Content-Type": mimeTypes[extname(filePath)] ?? "application/octet-stream",
+      "Cache-Control": "no-store",
+    });
     response.end(body);
   } catch (error) {
     response.writeHead(404);
@@ -115,6 +136,36 @@ async function handleApiRequest(request, url, response) {
     return;
   }
 
+  if (url.pathname === "/api/local/avatar") {
+    const body = await getLocalAvatar(url);
+    sendJson(response, body.ok ? 200 : 404, body);
+    return;
+  }
+
+  if (url.pathname === "/api/local/scene-object") {
+    const body = await getLocalSceneObject(url);
+    sendJson(response, body.ok ? 200 : 404, body);
+    return;
+  }
+
+  if (url.pathname === "/api/local/effect") {
+    const body = await getLocalEffect(url);
+    sendJson(response, body.ok ? 200 : 404, body);
+    return;
+  }
+
+  if (url.pathname === "/api/local/terrain-tile") {
+    const body = await getLocalTerrainTile(url);
+    sendJson(response, body.ok ? 200 : 404, body);
+    return;
+  }
+
+  if (url.pathname === "/api/local/items") {
+    const body = await getLocalItems();
+    sendJson(response, body.ok ? 200 : 404, body);
+    return;
+  }
+
   sendJson(response, 404, { error: "Unknown API endpoint" });
 }
 
@@ -166,6 +217,164 @@ async function getLocalPathStatus() {
     settings,
     paths: entries,
   };
+}
+
+async function getLocalAvatar(url) {
+  try {
+    const settings = await readLocalPathSettings();
+    const avatarId = String(url.searchParams.get("avatarId") ?? "");
+    const animationId = String(url.searchParams.get("animation") ?? "walk");
+    const direction = Number(url.searchParams.get("direction") ?? 3);
+    const cacheKey = JSON.stringify({
+      gameInstallDir: settings.gameInstallDir,
+      avatarId,
+      animationId,
+      direction,
+    });
+
+    if (avatarAssetCache.has(cacheKey)) {
+      return avatarAssetCache.get(cacheKey);
+    }
+
+    const asset = await readAvatarAnimationAsset({
+      avatarId,
+      animationId,
+      direction,
+      gameInstallDir: settings.gameInstallDir,
+    });
+    avatarAssetCache.set(cacheKey, asset);
+    return asset;
+  } catch (error) {
+    return {
+      ok: false,
+      available: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+async function getLocalSceneObject(url) {
+  try {
+    const settings = await readLocalPathSettings();
+    const objectId = String(url.searchParams.get("objectId") ?? "goldMine");
+    const object = sceneObjectDefinitions[objectId];
+    if (!object) throw new Error(`Unknown scene object: ${objectId}`);
+
+    const animationId = String(url.searchParams.get("animation") ?? object.defaultAnimation);
+    const cacheKey = JSON.stringify({
+      gameInstallDir: settings.gameInstallDir,
+      objectId,
+      animationId,
+    });
+
+    if (sceneObjectAssetCache.has(cacheKey)) {
+      return sceneObjectAssetCache.get(cacheKey);
+    }
+
+    const asset = await readSpriteAnimationAsset({
+      spriteId: object.spriteId,
+      archiveName: object.archive,
+      animationId,
+      gameInstallDir: settings.gameInstallDir,
+    });
+    const body = {
+      ...asset,
+      object,
+    };
+    sceneObjectAssetCache.set(cacheKey, body);
+    return body;
+  } catch (error) {
+    return {
+      ok: false,
+      available: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+async function getLocalEffect(url) {
+  try {
+    const settings = await readLocalPathSettings();
+    const effectId = String(url.searchParams.get("effectId") ?? "");
+    const cacheKey = JSON.stringify({
+      gameInstallDir: settings.gameInstallDir,
+      effectId: effectId.toUpperCase(),
+    });
+
+    if (effectAssetCache.has(cacheKey)) {
+      return effectAssetCache.get(cacheKey);
+    }
+
+    const asset = await readEffectAnimationAsset({
+      effectId,
+      gameInstallDir: settings.gameInstallDir,
+    });
+    effectAssetCache.set(cacheKey, asset);
+    return asset;
+  } catch (error) {
+    return {
+      ok: false,
+      available: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+async function getLocalTerrainTile(url) {
+  try {
+    const settings = await readLocalPathSettings();
+    const terrainName = String(url.searchParams.get("terrain") ?? "Grass");
+    const tileId = String(url.searchParams.get("tileId") ?? "TGB0");
+    const cacheKey = JSON.stringify({
+      gameInstallDir: settings.gameInstallDir,
+      terrainName,
+      tileId: tileId.toUpperCase(),
+    });
+
+    if (terrainAssetCache.has(cacheKey)) {
+      return terrainAssetCache.get(cacheKey);
+    }
+
+    const asset = await readTerrainTileAsset({
+      terrainName,
+      tileId,
+      gameInstallDir: settings.gameInstallDir,
+    });
+    terrainAssetCache.set(cacheKey, asset);
+    return asset;
+  } catch (error) {
+    return {
+      ok: false,
+      available: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+async function getLocalItems() {
+  try {
+    const settings = await readLocalPathSettings();
+    const cacheKey = JSON.stringify({
+      gameInstallDir: settings.gameInstallDir,
+    });
+
+    if (itemCatalogCache.has(cacheKey)) {
+      return itemCatalogCache.get(cacheKey);
+    }
+
+    const body = await readItemCatalog({
+      gameInstallDir: settings.gameInstallDir,
+    });
+    itemCatalogCache.set(cacheKey, body);
+    return body;
+  } catch (error) {
+    return {
+      ok: false,
+      available: false,
+      items: [],
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 async function getLocalSettings() {

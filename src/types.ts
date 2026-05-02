@@ -1,4 +1,5 @@
 export type StatKey = "strength" | "dexterity" | "intelligence" | "charisma";
+export type RulesetId = "wbc3-10323" | "protectors";
 
 export type PrimaryStats = Record<StatKey, number>;
 
@@ -13,6 +14,7 @@ export interface SkillUnlock {
   availableAt: number;
   startingLevel: number;
   dataNote: DataNote;
+  passive?: boolean;
 }
 
 export interface HeroRace {
@@ -46,11 +48,13 @@ export interface HeroSkill {
 }
 
 export interface CharacterBuild {
+  rulesetId: RulesetId;
   name?: string;
   raceId: string;
   classId: string;
   level: number;
   portraitId?: number;
+  avatarId?: string;
   statAllocation: PrimaryStats;
   skillAllocation: Record<string, number>;
 }
@@ -60,6 +64,22 @@ export interface SavedBuild extends CharacterBuild {
   name: string;
   origin?: string;
   imported?: boolean;
+}
+
+export interface PointBudget {
+  mode: "separate" | "shared";
+  label: string;
+  statLabel: string;
+  skillLabel: string;
+  statSpent: number;
+  skillSpent: number;
+  statCost: number;
+  skillCost: number;
+  available?: number;
+  spent?: number;
+  remaining?: number;
+  statAvailable?: number;
+  skillAvailable?: number;
 }
 
 export interface RegenSummary {

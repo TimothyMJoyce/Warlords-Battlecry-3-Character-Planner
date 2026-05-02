@@ -14,9 +14,18 @@ The Excel workbook remains a reference for the desired planner workflow and visi
 - Life uses class base life, class life per level, Constitution effect, and Strength life bonus.
 - Mana uses class base mana, Intelligence mana bonus, and Lore effect.
 
+## Rulesets
+
+- The planner now stores an explicit ruleset on builds. Legacy builds without a ruleset are treated as `WBC3 10323`.
+- The Protectors slice has 16 races, 34 hero classes, and 11 visible skill slots.
+- Protectors uses a shared hero point pool. Stats cost 2 hero points per rank and career skill ranks cost 1 hero point per rank.
+- Protectors total hero points follow level bands: 5 per level through 10, 4 per level through 20, 3 per level through 40, then 2 per level after 40.
+- Protectors level XP uses `75 * (level - 1)^2`.
+- Protectors career skill duplicate handling merges race/class duplicates into one visible skill, marks it as available at level 1, and resets creation-time starting ranks to zero for this planner slice.
+
 ## Current Planner Boundary
 
-The implemented v1 covers race, class, level, primary stat allocation, skill allocation, and core derived stats. Equipment, retinue, campaign bonuses, spell details, and full battle simulation are intentionally outside this slice.
+The implemented v1 covers race, class, level, primary stat allocation, skill allocation, and core derived stats. Equipment, retinue, campaign bonuses, Protectors spell purchase, Protectors perks, Protectors items, Protectors cultures, and full battle simulation are intentionally outside this slice.
 
 ## Saved Hero Import
 
