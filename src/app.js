@@ -663,8 +663,12 @@ function formatRegen(value, unit) {
 }
 
 function formatSecondsPrecise(milliseconds) {
-  const seconds = Math.max(0, Number(milliseconds) || 0) / 1000;
-  return seconds.toFixed(2).replace(/\.00$/, "").replace(/0$/, "");
+  const numeric = Number(milliseconds);
+  if (!Number.isFinite(numeric)) return "0";
+  if (numeric > 0 && numeric < 10) return "<0.01";
+  const seconds = Math.max(0, numeric) / 1000;
+  const text = seconds.toFixed(2).replace(/\.00$/, "").replace(/0$/, "");
+  return text || "0";
 }
 
 function formatSeconds(milliseconds) {

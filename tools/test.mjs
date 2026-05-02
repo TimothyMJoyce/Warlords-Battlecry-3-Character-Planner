@@ -204,6 +204,7 @@ if (importedHeroBuilds.length > 0) {
 
 assert.equal(calculateAttackSpeed({ dexterity: 7 }, { swiftness: 5 }).periodMs, 952);
 assert.equal(calculateAttackSpeed({ dexterity: 7 }, { fireMissile: 1 }).periodMs, 1200);
+assert.equal(calculateAttackSpeed({ dexterity: 35 }, { swiftness: 20 }).periodMs, 1);
 assert.equal(calculateResistance({ baseResistance: 10 }, { dexterity: 7 }, { warding: 2 }), 19);
 assert.deepEqual(
   calculateDamageResistances(17, 18, {

@@ -17,6 +17,7 @@ export const emptyStats = () => ({
 
 const REGEN_BASE_MS = 20000;
 const MAX_EFFECTIVE_COMMAND = 19;
+const HERO_ATTACK_SPEED_FALLBACK_PERIOD_MS = 1;
 
 const CONVERSION_TIME_BY_SCORE = [
   100, 80, 70, 60, 50, 48, 45, 42, 39, 36, 33, 32, 30, 29, 28, 27, 26, 25, 24, 23,
@@ -399,7 +400,8 @@ export function calculateAttackSpeed(stats, skillLevels = {}) {
   const swiftnessMultiplier = 100 + skillEffect("swiftness", skillLevels.swiftness);
   const basePeriodMs = 1000 - Math.trunc((10 * attackSpeedBonus * swiftnessMultiplier) / 100);
   const fightSpeed = skillLevels.fireMissile > 0 ? 8 : 10;
-  const periodMs = Math.trunc((basePeriodMs * 10) / fightSpeed);
+  const rawPeriodMs = Math.trunc((basePeriodMs * 10) / fightSpeed);
+  const periodMs = rawPeriodMs > 0 ? rawPeriodMs : HERO_ATTACK_SPEED_FALLBACK_PERIOD_MS;
   return {
     periodMs,
     multiplier: Number((periodMs / 1000).toFixed(2)),
