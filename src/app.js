@@ -152,7 +152,7 @@ function render() {
           </div>
           <div class="core-grid">
             ${summaryItem("Life", summary.life, { secondary: formatRegen(summary.lifeRegen, "HP") })}
-            ${summaryItem("Mana", summary.mana, { secondary: formatRegen(summary.manaRegen, "mana") })}
+            ${summaryItem("Mana", summary.mana, { secondary: formatRegen(summary.manaRegen, "MP") })}
             ${summaryItem("Combat", summary.combat)}
             ${summaryItem("Speed", summary.speed)}
             ${summaryItem("Damage", `${summary.damage} ${summary.damageType}`)}
@@ -651,7 +651,7 @@ function formatXp(value) {
 }
 
 function formatAttackSpeed(value) {
-  return `${value.periodMs} ms (${value.multiplier.toFixed(2)}x)`;
+  return `${formatSecondsPrecise(value.periodMs)}s`;
 }
 
 function formatUnitAttackSpeed(value) {
