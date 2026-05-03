@@ -336,7 +336,6 @@ function render() {
             ${moraleEffectsSection(summary)}
             ${summaryItem("Merchant", formatMerchant(summary.merchant))}
             ${summaryItem("Command Radius", summary.commandRadius, { secondary: `Conversion Time ${summary.conversionTime}s` })}
-            ${summaryItem("Group Limit", summary.groupLimit)}
           </div>
         </section>
 

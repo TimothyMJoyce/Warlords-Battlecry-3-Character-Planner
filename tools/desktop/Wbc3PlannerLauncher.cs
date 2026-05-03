@@ -611,13 +611,19 @@ namespace Wbc3Planner
         private static void OpenPlannerWindow(string url)
         {
             string edge = FindEdge();
+            string windowArgs = GetMaximizedWindowArguments();
 
             if (edge != null)
             {
+                string profileDir = GetEdgeProfileDir();
                 ProcessStartInfo edgeStart = new ProcessStartInfo();
                 edgeStart.FileName = edge;
-                edgeStart.Arguments = "--app=" + Quote(url) + " --new-window";
+                edgeStart.Arguments =
+                    "--user-data-dir=" + Quote(profileDir) +
+                    " --no-first-run --app=" + Quote(url) +
+                    " --new-window --start-maximized" + windowArgs;
                 edgeStart.UseShellExecute = false;
+                edgeStart.WindowStyle = ProcessWindowStyle.Maximized;
                 Process.Start(edgeStart);
                 return;
             }
@@ -625,7 +631,35 @@ namespace Wbc3Planner
             ProcessStartInfo browserStart = new ProcessStartInfo();
             browserStart.FileName = url;
             browserStart.UseShellExecute = true;
+            browserStart.WindowStyle = ProcessWindowStyle.Maximized;
             Process.Start(browserStart);
+        }
+
+        private static string GetMaximizedWindowArguments()
+        {
+            try
+            {
+                var area = Screen.PrimaryScreen.WorkingArea;
+                return " --window-position=" + area.Left + "," + area.Top +
+                    " --window-size=" + area.Width + "," + area.Height;
+            }
+            catch
+            {
+                return "";
+            }
+        }
+
+        private static string GetEdgeProfileDir()
+        {
+            string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            if (String.IsNullOrWhiteSpace(localAppData))
+            {
+                localAppData = Path.GetTempPath();
+            }
+
+            string profileDir = Path.Combine(localAppData, "WBC3 Planner", "edge-profile");
+            Directory.CreateDirectory(profileDir);
+            return profileDir;
         }
 
         private static bool ProcessLooksLikePlannerServer(Process process)

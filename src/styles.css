@@ -430,15 +430,16 @@ html[data-theme="light"] .theme-icon::after {
 
 .builder-grid {
   display: grid;
-  grid-template-columns: 280px minmax(240px, 320px) minmax(320px, 1fr) minmax(280px, 360px);
+  grid-template-columns: 280px repeat(2, minmax(300px, 420px));
   grid-template-areas:
-    "identity strength dexterity charisma"
-    "identity intelligence dexterity charisma"
-    "skills skills skills skills"
-    "spells spells spells spells"
-    "items items items items";
+    "identity strength dexterity"
+    "identity intelligence charisma"
+    "skills skills skills"
+    "spells spells spells"
+    "items items items";
   gap: 16px;
   align-items: stretch;
+  justify-content: center;
 }
 
 .panel {
@@ -480,6 +481,17 @@ html[data-theme="light"] .theme-icon::after {
 
 .items-panel {
   grid-area: items;
+}
+
+.strength-panel,
+.dexterity-panel,
+.intelligence-panel,
+.charisma-panel {
+  aspect-ratio: 1 / 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .panel-heading {
@@ -959,7 +971,8 @@ input {
 .charisma-panel .stat-row {
   grid-template-columns: minmax(0, 1fr) 94px 38px;
   gap: 8px;
-  margin-bottom: 10px;
+  flex: 0 0 auto;
+  margin-bottom: 8px;
   padding: 8px;
 }
 
@@ -1059,6 +1072,17 @@ output {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 8px;
+}
+
+.strength-panel .core-grid,
+.intelligence-panel .core-grid,
+.dexterity-panel .dexterity-grid,
+.charisma-panel .summary-grid {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  align-content: start;
+  scrollbar-width: thin;
 }
 
 .dexterity-grid {
@@ -1499,8 +1523,7 @@ output {
     grid-template-areas:
       "identity identity"
       "strength dexterity"
-      "intelligence dexterity"
-      "charisma charisma"
+      "intelligence charisma"
       "skills skills"
       "spells spells"
       "items items";
@@ -1553,6 +1576,21 @@ output {
       "skills"
       "spells"
       "items";
+  }
+
+  .strength-panel,
+  .dexterity-panel,
+  .intelligence-panel,
+  .charisma-panel {
+    aspect-ratio: auto;
+    overflow: visible;
+  }
+
+  .strength-panel .core-grid,
+  .intelligence-panel .core-grid,
+  .dexterity-panel .dexterity-grid,
+  .charisma-panel .summary-grid {
+    overflow-y: visible;
   }
 
   .top-actions {
