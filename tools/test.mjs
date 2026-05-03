@@ -28,7 +28,9 @@ import {
 } from "../src/data/spellEffects.js";
 import { readAvatarAnimationAsset, readEffectAnimationAsset, readSpriteAnimationAsset } from "./wbc3-animation-reader.mjs";
 import { readTerrainTileAsset } from "./wbc3-terrain-reader.mjs";
-import { parseItemConfig, readItemCatalog } from "./wbc3-items-reader.mjs";
+import { parseItemConfig, parseItemXml, readItemCatalog } from "./wbc3-items-reader.mjs";
+import { parseSpellTextCatalog } from "./wbc3-spells-reader.mjs";
+import { buildSkillTextCatalog, parseGameText, readSkillTextCatalog } from "./wbc3-game-text-reader.mjs";
 import {
   calculateAttackSpeed,
   calculateArmyLimitBonus,
@@ -37,6 +39,7 @@ import {
   calculateDamageResistances,
   calculateLifeRegen,
   calculateManaRegen,
+  calculateCommandRadius,
   calculateResistance,
   calculateHeroSummary,
   calculateStartingStats,
@@ -117,6 +120,15 @@ assert.equal(spellPreviewSpells.length, 140);
 assert.equal(getSpellPreview("destruction").label, "Destruction");
 assert.deepEqual(getSpellPreviewEffectIds(getSpellPreview("destruction")), ["EARC", "EX01"]);
 assert.equal(getSpellPreview("not-real").id, "healSelf");
+assert.equal(getSpellPreview("healSelf").gameTextIndex, 0);
+assert.equal(getSpellPreview("breathOfDying").gameTextIndex, 139);
+assert.deepEqual(parseSpellTextCatalog("[SPELL_NAME_00]\tHeal Self\n[SPELL_DESC_00]\tHeals the caster"), [
+  {
+    index: 0,
+    name: "Heal Self",
+    description: "Heals the caster",
+  },
+]);
 
 assert.deepEqual(
   rulesetOptions.map((ruleset) => ruleset.id),
@@ -202,6 +214,13 @@ assert.match(appSource, /api\/local\/terrain-tile/);
 assert.match(appSource, /api\/local\/effect/);
 assert.match(appSource, /api\/local\/items/);
 assert.match(appSource, /hero-spell-select/);
+assert.match(appSource, /hero-spell-sphere-select/);
+assert.match(appSource, /api\/local\/skills/);
+assert.match(appSource, /data-spell-sphere-id/);
+assert.match(appSource, /skillDescriptionCell/);
+assert.doesNotMatch(appSource, /backpack4/);
+assert.doesNotMatch(appSource, /data-preview-spell-id/);
+assert.doesNotMatch(appSource, /spell-preview-button/);
 assert.match(appSource, /data-hero-rotate/);
 assert.match(appSource, /spellSpheresPanel\(summary\)/);
 assert.match(appSource, /itemsPanel\(\)/);
@@ -300,14 +319,17 @@ assert.deepEqual(summary.merchant, {
   score: -1,
   discountPercent: -1,
 });
-assert.equal(summary.commandRadius, 9);
+assert.equal(summary.commandRadius, 7);
 assert.equal(summary.command, 9);
 assert.equal(summary.groupLimit, 11);
 assert.equal(summary.conversion, 8);
 assert.equal(summary.conversionTime, 39);
-assert.equal(summary.conversionRange, 9);
+assert.equal(summary.conversionRange, 7);
 assert.equal(summary.armyLimitBonus, 1);
 assert.equal(summary.retinueSlots, 8);
+assert.equal(calculateCommandRadius({ strength: 1, dexterity: 1, intelligence: 1, charisma: 51 }), 18);
+assert.equal(calculateCommandRadius({ strength: 1, dexterity: 1, intelligence: 1, charisma: 52 }), 19);
+assert.equal(calculateCommandRadius({ strength: 1, dexterity: 1, intelligence: 1, charisma: 80 }), 19);
 
 const invalidSkills = validateSkillAllocation({
   ...baseBuild,
@@ -499,6 +521,38 @@ assert.deepEqual(parsedItemConfig.items.map((item) => [item.name, item.typeLabel
   ["Sirian's Greatsword", "Sword", "Combat", 6],
   ["The Snakeskin Boots", "Boots", "Speed", 6],
 ]);
+const parsedItemXml = parseItemXml(`
+<Items>
+  <Item id="1">
+    <Name>Gnarled Staff</Name>
+    <Power id="0" type="crushing" data="5"/>
+    <Power id="1" type="spell casting" data="5"/>
+    <Description>A common staff.</Description>
+    <Image iconrow="1" iconcol="1" />
+    <Data value="10" level="minor" rarity="10"/>
+  </Item>
+</Items>
+`);
+assert.equal(parsedItemXml.items.length, 1);
+assert.deepEqual(parsedItemXml.items[0].powers.map((power) => [power.typeLabel, power.data]), [
+  ["Crushing", 5],
+  ["Spell Casting", 5],
+]);
+assert.equal(parsedItemXml.items[0].description, "A common staff.");
+
+const parsedGameText = parseGameText(`
+[0593]\t+%d to Combat Skill
+[0646]\tSteal +%d life with each hit in melee
+[0760]\tFerocity
+[1152]\t+%d%% Attack speed
+[1154]\tSwiftness
+`);
+const parsedSkillText = buildSkillTextCatalog(parsedGameText);
+assert.equal(parsedSkillText.find((skill) => skill.id === "ferocity").name, "Ferocity");
+assert.equal(parsedSkillText.find((skill) => skill.id === "ferocity").descriptionTemplate, "+%d to Combat Skill");
+assert.equal(parsedSkillText.find((skill) => skill.id === "vampirism").descriptionTemplate, "Steal +%d life with each hit in melee");
+assert.equal(parsedSkillText.find((skill) => skill.id === "swiftness").name, "Swiftness");
+assert.equal(parsedSkillText.find((skill) => skill.id === "swiftness").descriptionTemplate, "+%d%% Attack speed");
 
 try {
   const avatarAsset = await readAvatarAnimationAsset({ avatarId: "AHHX", animationId: "walk" });
@@ -533,9 +587,15 @@ try {
   const itemCatalog = await readItemCatalog();
   assert.equal(itemCatalog.ok, true);
   assert.equal(itemCatalog.available, true);
-  assert.equal(itemCatalog.items.length, 24);
-  assert.equal(itemCatalog.items[0].name, "Sirian's Greatsword");
-  assert.equal(itemCatalog.items[10].powerLabel, "Speed");
+  assert.equal(itemCatalog.items.length > 100, true);
+  assert.equal(itemCatalog.items[0].name, "Gnarled Staff");
+  assert.equal(itemCatalog.items[0].description.length > 20, true);
+  assert.equal(itemCatalog.items[0].powers[1].typeLabel, "Spell Casting");
+
+  const skillTextCatalog = await readSkillTextCatalog();
+  assert.equal(skillTextCatalog.ok, true);
+  assert.equal(skillTextCatalog.skills.find((skill) => skill.id === "vampirism").descriptionTemplate, "Steal +%d life with each hit in melee");
+  assert.equal(skillTextCatalog.skills.find((skill) => skill.id === "magicTime").name, "Time Magic");
 
   const healingEffectAsset = await readEffectAnimationAsset({ effectId: "EZ11" });
   assert.equal(healingEffectAsset.ok, true);

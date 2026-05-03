@@ -13,6 +13,8 @@ The Excel workbook remains a reference for the desired planner workflow and visi
 - Duplicate race/class skills are merged, gain an extra +2 starting levels, and can receive availability `0` or `1` depending on which side introduced the duplicate.
 - Life uses class base life, class life per level, Constitution effect, and Strength life bonus.
 - Mana uses class base mana, Intelligence mana bonus, and Lore effect.
+- Spellcasting is a chance modifier from Intelligence and Ritual. Actual spell success starts from a base chance, applies a level penalty, then adds this modifier and any temporary/item modifiers.
+- Command Radius in the hero stat text is `6 + floor(Charisma / 4)`, capped at `19`, so the displayed stat reaches its cap at 52 Charisma. Some battle-runtime command paths use an older command score before clamping; the planner displays the hero stat text value.
 
 ## Rulesets
 

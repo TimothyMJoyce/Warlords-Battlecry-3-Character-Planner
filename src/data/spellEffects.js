@@ -225,7 +225,7 @@ const spellPreviewGroupRows = [
   ],
 ];
 
-export const spellPreviewGroups = spellPreviewGroupRows.map(([id, label, spells]) => ({
+export const spellPreviewGroups = spellPreviewGroupRows.map(([id, label, spells], groupIndex) => ({
   id,
   label,
   spells: spells.map(([spellId, spellLabel, effects], index) => ({
@@ -234,6 +234,7 @@ export const spellPreviewGroups = spellPreviewGroupRows.map(([id, label, spells]
     sphereId: id,
     sphereLabel: label,
     level: index + 1,
+    gameTextIndex: groupIndex * 10 + index,
     effects: normalizeEffects(effects),
   })),
 }));

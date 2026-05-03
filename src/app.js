@@ -79,6 +79,11 @@ let localHeroImportError = "";
 let localSettingsStatus = "";
 let localItemCatalog = [];
 let localItemCatalogError = "";
+let localSpellTextByIndex = new Map();
+let localSpellTextError = "";
+let localSkillTextById = new Map();
+let localSkillMagicTemplates = {};
+let localSkillTextError = "";
 let itemSearchQuery = "";
 let previewAnimationId = DEFAULT_HERO_ANIMATION_ID;
 let heroPreviewExpanded = false;
@@ -92,6 +97,7 @@ let goldMinePreviewAssetError = "";
 let grassTilePreviewAsset = null;
 let grassTilePreviewAssetError = "";
 let previewSpellId = defaultSpellPreviewId;
+let activeSpellSphereId = spellPreviewGroups[0]?.id ?? "";
 let heroPreviewFrame = 0;
 let heroPreviewFrameElapsed = 0;
 let goldMinePreviewFrame = 0;
@@ -134,16 +140,13 @@ const spellSphereSkillIds = {
 };
 
 const equipmentSlots = [
-  { id: "crown", label: "Crown", accepts: [6] },
-  { id: "helm", label: "Helm", accepts: [7] },
-  { id: "necklace", label: "Necklace", accepts: [3] },
+  { id: "head", label: "Head", accepts: [6, 7] },
+  { id: "body", label: "Body", accepts: [2, 3] },
   { id: "weapon", label: "Weapon", accepts: [0, 1] },
-  { id: "armor", label: "Armor", accepts: [2] },
-  { id: "shield", label: "Shield", accepts: [4] },
-  { id: "banner", label: "Banner", accepts: [8] },
-  { id: "ring1", label: "Ring", accepts: [5] },
+  { id: "offhand", label: "Off Hand", accepts: [4, 8] },
+  { id: "ring1", label: "Ring", accepts: [5, 10] },
+  { id: "ring2", label: "Ring", accepts: [5, 10] },
   { id: "boots", label: "Boots", accepts: [9] },
-  { id: "ring2", label: "Ring", accepts: [5] },
 ];
 
 const equipmentSlotsById = Object.fromEntries(equipmentSlots.map((slot) => [slot.id, slot]));
@@ -158,6 +161,7 @@ const equipmentTypeLabels = {
   7: "Helm",
   8: "Banner",
   9: "Boots",
+  10: "Orb",
 };
 
 rulesetDrafts = loadRulesetDrafts();
@@ -197,6 +201,7 @@ function render() {
   const pointBudget = getPointBudget(build);
   const unlocks = getAvailableSkillUnlocks(build);
   const effectsBySkill = groupSkillEffectsBySkill(summary.skillEffectList);
+  const classOptions = getSortedHeroClasses();
   const race = races.find((entry) => entry.id === build.raceId);
   const heroClass = heroClasses.find((entry) => entry.id === build.classId);
   const avatarId = currentAvatarId();
@@ -230,8 +235,6 @@ function render() {
         </div>
       </header>
 
-      ${heroPreviewPanel(summary, race, heroClass, avatarId)}
-
       <section class="builder-grid">
         <aside class="panel identity-panel">
           <div class="panel-heading">
@@ -251,7 +254,14 @@ function render() {
           </div>
           <label class="field">
             <span>Hero Name</span>
-            <input id="hero-name-input" type="text" maxlength="40" value="${escapeHtml(build.name ?? "")}" />
+            <input
+              id="hero-name-input"
+              type="text"
+              maxlength="40"
+              placeholder="Enter hero name"
+              title="Enter hero name"
+              value="${escapeHtml(build.name ?? "")}"
+            />
           </label>
           <label class="field">
             <span>Race</span>
@@ -262,7 +272,7 @@ function render() {
           <label class="field">
             <span>Class</span>
             <select id="class-select">
-              ${heroClasses.map((item) => option(item.id, item.displayName, build.classId)).join("")}
+              ${classOptions.map((item) => option(item.id, item.displayName, build.classId)).join("")}
             </select>
           </label>
           <div class="field">
@@ -300,8 +310,8 @@ function render() {
           ${statAllocator("intelligence", startingStats, statValidation, pointBudget, summary)}
           <div class="core-grid">
             ${summaryItem("Mana", summary.mana, { secondary: formatRegen(summary.manaRegen, "MP") })}
-            ${summaryItem("Spellcasting", summary.spellcasting)}
-            ${summaryItem("Initial Troop XP", summary.initialTroopXp)}
+            ${summaryItem("Spellcasting", formatPercentBonus(summary.spellcasting))}
+            ${summaryItem("Initial Troop XP", formatSignedValue(summary.initialTroopXp))}
           </div>
         </section>
 
@@ -348,11 +358,14 @@ function render() {
             ${unlocks.map((unlock) => skillRow(unlock, skillValidation, pointBudget, effectsBySkill.get(unlock.skillId) ?? [])).join("")}
           </div>
           ${messages(skillValidation.warnings)}
+          ${localSkillTextError ? `<p class="import-note is-error">${escapeHtml(localSkillTextError)}</p>` : ""}
         </section>
 
         ${spellSpheresPanel(summary)}
         ${itemsPanel()}
       </section>
+
+      ${heroPreviewPanel(summary, race, heroClass, avatarId)}
     </main>
   `;
 
@@ -440,9 +453,10 @@ function bindEvents() {
     });
   });
 
-  document.querySelectorAll("[data-preview-spell-id]").forEach((button) => {
+  document.querySelectorAll("[data-spell-sphere-id]").forEach((button) => {
     button.addEventListener("click", () => {
-      previewSpell(button.dataset.previewSpellId);
+      activeSpellSphereId = button.dataset.spellSphereId;
+      render();
     });
   });
 
@@ -493,6 +507,13 @@ function bindEvents() {
     previewAnimationId = event.target.value;
     heroPreviewFrame = 0;
     heroPreviewFrameElapsed = 0;
+    render();
+  });
+
+  document.querySelector("#hero-spell-sphere-select")?.addEventListener("change", (event) => {
+    const group = getSpellPreviewGroup(event.target.value);
+    previewSpellId = normalizeSpellPreviewId(group.spells[0]?.id);
+    loadSpellPreviewAssets(previewSpellId);
     render();
   });
 
@@ -560,16 +581,6 @@ function updateSkill(key, delta) {
   if (allocation[key] <= 0) delete allocation[key];
   build = { ...build, skillAllocation: allocation };
   trimAllocations();
-  render();
-}
-
-function previewSpell(spellId) {
-  previewSpellId = normalizeSpellPreviewId(spellId);
-  previewAnimationId = normalizeHeroAnimationId(currentAvatarId(), "spell");
-  heroPreviewExpanded = true;
-  heroPreviewFrame = 0;
-  heroPreviewFrameElapsed = 0;
-  loadSpellPreviewAssets(previewSpellId);
   render();
 }
 
@@ -798,7 +809,10 @@ function loadRulesetDrafts() {
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return drafts;
     for (const [rulesetId, value] of Object.entries(parsed)) {
       const savedBuild = cloneSavedBuild(value, `draft-${rulesetId}`, rulesetId);
-      if (savedBuild) drafts.set(savedBuild.rulesetId, savedBuild);
+      if (savedBuild) {
+        if (savedBuild.name === "New Hero" || savedBuild.name === "Draft") savedBuild.name = "";
+        drafts.set(savedBuild.rulesetId, savedBuild);
+      }
     }
   } catch {
     return drafts;
@@ -812,7 +826,7 @@ function rememberCurrentDraft() {
     {
       ...build,
       id: `draft-${activeRulesetId}`,
-      name: String(build.name ?? "").trim() || "Draft",
+      name: String(build.name ?? "").trim(),
       rulesetId: activeRulesetId,
       imported: false,
       origin: "Draft",
@@ -921,6 +935,8 @@ function skillRow(unlock, skillValidation, pointBudget, effects = []) {
   const hasEffects = effects.length ? "has-effects" : "";
   const maxed = unlock.maxLevel !== Infinity && unlock.currentLevel >= unlock.maxLevel;
   const canAdd = unlock.available && !unlock.passive && !maxed && canSpendSkill(skillValidation, pointBudget);
+  const skillName = getSkillDisplayName(unlock.skillId, skill?.displayName ?? unlock.skillId);
+  const skillDescription = getSkillDescription(unlock.skillId, unlock.currentLevel, effects) || "No game description available.";
   const controls = unlock.passive
     ? `<span class="passive-skill">Passive</span>`
     : `
@@ -933,10 +949,10 @@ function skillRow(unlock, skillValidation, pointBudget, effects = []) {
   return `
     <article class="skill-row ${locked} ${hasEffects}">
       <div class="skill-info">
-        <strong>${escapeHtml(skill?.displayName ?? unlock.skillId)}</strong>
+        <strong>${escapeHtml(skillName)}</strong>
         <span>${escapeHtml(originText)} / ${escapeHtml(unlockText)}</span>
       </div>
-      ${skillEffectList(effects)}
+      ${skillDescriptionCell(skillDescription)}
       ${controls}
       <output>${unlock.currentLevel}</output>
     </article>
@@ -948,83 +964,75 @@ function canSpendSkill(skillValidation, pointBudget) {
   return skillValidation.spent < skillValidation.available;
 }
 
+function skillDescriptionCell(description) {
+  return `<div class="skill-description-cell">${escapeHtml(description)}</div>`;
+}
+
 function spellSpheresPanel(summary) {
-  const spheres = getUnlockedSpellSpheres(summary);
-  const spellCount = spheres.reduce((total, sphere) => total + sphere.spells.length, 0);
+  const spheres = getSpellSpheres(summary);
+  if (!spheres.some((sphere) => sphere.group.id === activeSpellSphereId)) {
+    activeSpellSphereId = spheres[0]?.group.id ?? "";
+  }
+  const activeSphere = spheres.find((sphere) => sphere.group.id === activeSpellSphereId) ?? spheres[0];
   return `
     <section class="panel spells-panel">
       <div class="panel-heading">
         <h2>Spells</h2>
-        <span>${spellCount ? `${spellCount} unlocked` : "No unlocked spheres"}</span>
       </div>
-      <div class="spell-spheres-list">
-        ${
-          spheres.length
-            ? spheres.map(spellSphereCard).join("")
-            : `<p class="empty-state">Add a magic sphere skill to unlock its spell list.</p>`
-        }
+      <div class="spell-sphere-tabs" role="tablist" aria-label="Spell spheres">
+        ${spheres.map(spellSphereTab).join("")}
       </div>
+      ${activeSphere ? spellSphereCard(activeSphere) : `<p class="empty-state">No spell spheres are available.</p>`}
+      ${localSpellTextError ? `<p class="import-note is-error">${escapeHtml(localSpellTextError)}</p>` : ""}
     </section>
   `;
 }
 
+function spellSphereTab(sphere) {
+  const active = sphere.group.id === activeSpellSphereId ? "is-active" : "";
+  const unlocked = sphere.spellCount > 0 ? "has-spells" : "";
+  return `
+    <button type="button" class="spell-sphere-tab ${active} ${unlocked}" data-spell-sphere-id="${escapeHtml(sphere.group.id)}" role="tab" aria-selected="${active ? "true" : "false"}">
+      <span>${escapeHtml(sphere.group.label)}</span>
+    </button>
+  `;
+}
+
 function spellSphereCard(sphere) {
-  const firstColumn = sphere.spells.slice(0, 5);
-  const secondColumn = sphere.spells.slice(5, 10);
   return `
     <article class="spell-sphere-card">
-      <header>
-        <strong>${escapeHtml(sphere.group.label)}</strong>
-        <span>${escapeHtml(sphere.skillLabel)} / ${escapeHtml(formatSpellKnowledge(sphere.skillLevel))}</span>
-      </header>
-      <div class="spell-sphere-columns">
-        <div class="spell-column">${firstColumn.map((spell) => spellRow(spell, sphere.spellLevel)).join("")}</div>
-        <div class="spell-column">${secondColumn.map((spell) => spellRow(spell, sphere.spellLevel)).join("")}</div>
+      <div class="spell-list">
+        ${sphere.group.spells.map(spellRow).join("")}
       </div>
     </article>
   `;
 }
 
-function spellRow(spell, spellLevel) {
-  const effects = getSpellPreviewEffectIds(spell);
-  const effectValue = effects.length ? effects.join(", ") : "No named VFX";
+function spellRow(spell) {
   return `
-    <article class="skill-row spell-row">
-      <div class="skill-info">
-        <strong>${escapeHtml(spell.label)}</strong>
-        <span>${escapeHtml(spell.sphereLabel)} / spell ${spell.level}</span>
-      </div>
-      ${skillEffectList([
-        {
-          label: "Spell Effects",
-          value: effectValue,
-          detail: getSpellScalingText(spell, spellLevel),
-        },
-      ])}
-      <button type="button" class="spell-preview-button" data-preview-spell-id="${escapeHtml(spell.id)}">Preview</button>
-      <output>L${spell.level}</output>
+    <article class="spell-row">
+      <strong>${escapeHtml(getSpellDisplayName(spell))}</strong>
+      <p>${escapeHtml(getSpellDescription(spell))}</p>
     </article>
   `;
 }
 
-function getUnlockedSpellSpheres(summary) {
+function getSpellSpheres(summary) {
   const skillLevels = summary.skillLevels ?? {};
   return spellPreviewGroups
     .map((group) => {
       const skillId = spellSphereSkillIds[group.id];
       const skillLevel = Math.max(0, Math.trunc(Number(skillLevels[skillId]) || 0));
       const spellCount = getKnownSpellCount(skillLevel);
-      const skillLabel = skillsById[skillId]?.displayName ?? group.label;
+      const skillLabel = getSkillDisplayName(skillId, skillsById[skillId]?.displayName ?? group.label);
       return {
         group,
         skillId,
         skillLabel,
         skillLevel,
-        spellLevel: getKnownSpellLevel(skillLevel),
-        spells: group.spells.slice(0, spellCount),
+        spellCount,
       };
-    })
-    .filter((sphere) => sphere.spells.length > 0);
+    });
 }
 
 function getKnownSpellCount(skillLevel) {
@@ -1044,21 +1052,54 @@ function formatSpellKnowledge(skillLevel) {
   return `${count} ${count === 1 ? "spell" : "spells"} / level ${getKnownSpellLevel(skillLevel)}`;
 }
 
-function getSpellScalingText(spell, spellLevel) {
-  const effectIds = getSpellPreviewEffectIds(spell);
-  const levelText = `current sphere spell level ${Math.max(1, spellLevel)}`;
-  if (spell.effects.missile.length) return `Missile damage and impact scale from casting result and ${levelText}.`;
-  if (/summon|raise|gate|horde|portal|guardian|elemental/i.test(spell.label)) {
-    return `Summoned unit strength, count, or duration scale from casting result and ${levelText}.`;
+function getSpellDisplayName(spell) {
+  return localSpellTextByIndex.get(spell.gameTextIndex)?.name || spell.label;
+}
+
+function getSpellDescription(spell) {
+  return localSpellTextByIndex.get(spell.gameTextIndex)?.description || "Game description text is not available.";
+}
+
+function getSkillDisplayName(skillId, fallback) {
+  return localSkillTextById.get(skillId)?.name || fallback;
+}
+
+function getSkillDescription(skillId, skillLevel, effects = []) {
+  const skillText = localSkillTextById.get(skillId);
+  if (!skillText) return "";
+  if (skillText.kind === "magic") return formatMagicSkillDescription(skillLevel);
+  if (!skillText.descriptionTemplate) return "";
+  return formatGameTemplate(skillText.descriptionTemplate, [getSkillEffectRawValue(skillId, skillLevel, effects)]);
+}
+
+function getSkillEffectRawValue(skillId, skillLevel, effects = []) {
+  const effect = effects.find((item) => item.skillId === skillId && Number.isFinite(Number(item.rawValue)));
+  if (effect) return Number(effect.rawValue);
+  return Math.max(0, Math.trunc(Number(skillLevel) || 0));
+}
+
+function formatMagicSkillDescription(skillLevel) {
+  const count = getKnownSpellCount(skillLevel);
+  const rank = getKnownSpellLevel(skillLevel);
+  if (!count) return localSkillMagicTemplates.noSpells || "Cannot cast any spells yet";
+  if (count === 1) {
+    return formatGameTemplate(localSkillMagicTemplates.oneSpell || "Cast the first %d spell at level %d", [count, rank]);
   }
-  if (/heal|cure|resurrection|invigorate|life/i.test(spell.label) || spell.sphereId === "healing") {
-    return `Healing, cure strength, or ward duration scale from casting result and ${levelText}.`;
+  if (count === 10) {
+    return formatGameTemplate(localSkillMagicTemplates.allSpells || "Cast all %d spells at level %d", [count, rank]);
   }
-  if (spell.effects.persistent.length) {
-    return `Persistent buff, ward, or aura duration scales from casting result and ${levelText}.`;
-  }
-  if (effectIds.length) return `Target power, duration, or radius scales from casting result and ${levelText}.`;
-  return `Rules effect scales from casting result and ${levelText}; no named visual effect is mapped yet.`;
+  return formatGameTemplate(localSkillMagicTemplates.firstSpells || "Cast the first %d spells at level %d", [count, rank]);
+}
+
+function formatGameTemplate(template, values = []) {
+  let index = 0;
+  return String(template || "")
+    .replace(/%[0-9.]*[df]/g, () => {
+      const value = values[index] ?? 0;
+      index += 1;
+      return String(value);
+    })
+    .replace(/%%/g, "%");
 }
 
 function itemsPanel() {
@@ -1092,8 +1133,9 @@ function itemsPanel() {
 function equipmentSlot(slot, itemId) {
   const item = getLocalItemById(itemId);
   const stateClass = item ? "is-equipped" : "is-empty";
+  const title = item ? `${item.name}: ${formatItemEffect(item)}` : slot.label;
   return `
-    <button type="button" class="equipment-slot equipment-slot-${slot.id} ${stateClass}" data-clear-item-slot="${escapeHtml(slot.id)}" title="${item ? "Clear item" : slot.label}">
+    <button type="button" class="equipment-slot equipment-slot-${slot.id} ${stateClass}" data-clear-item-slot="${escapeHtml(slot.id)}" title="${escapeHtml(title)}">
       <span>${escapeHtml(slot.label)}</span>
       <strong>${escapeHtml(item?.name ?? "Empty")}</strong>
       <small>${item ? escapeHtml(formatItemEffect(item)) : escapeHtml(formatSlotAccepts(slot))}</small>
@@ -1120,6 +1162,7 @@ function itemResult(item) {
       <span>
         <strong>${escapeHtml(item.name)}</strong>
         <small>${escapeHtml(item.typeLabel)} / ${escapeHtml(formatItemEffect(item))}</small>
+        ${item.description ? `<small>${escapeHtml(item.description)}</small>` : ""}
       </span>
       <em>Equip</em>
     </button>
@@ -1130,7 +1173,7 @@ function getVisibleItemSearchResults() {
   const query = itemSearchQuery.trim().toLowerCase();
   const items = localItemCatalog.filter((item) => {
     if (!query) return true;
-    return [item.name, item.typeLabel, item.powerLabel, formatItemEffect(item)]
+    return [item.name, item.typeLabel, item.powerLabel, formatItemEffect(item), item.description]
       .join(" ")
       .toLowerCase()
       .includes(query);
@@ -1159,15 +1202,39 @@ function normalizeEquippedItems(value = {}) {
   const items = emptyEquippedItems();
   if (!value || typeof value !== "object") return items;
   for (const slot of equipmentSlots) {
-    const itemId = String(value[slot.id] ?? "");
+    const itemId = getStoredItemIdForSlot(value, slot.id);
     items[slot.id] = itemId;
   }
   return items;
 }
 
+function getStoredItemIdForSlot(value, slotId) {
+  const legacySlots = {
+    head: ["crown", "helm"],
+    body: ["armor", "necklace"],
+    offhand: ["shield", "banner"],
+  };
+  const candidateIds = [slotId, ...(legacySlots[slotId] ?? [])];
+  const match = candidateIds.map((candidateId) => String(value[candidateId] ?? "")).find(Boolean);
+  return match ?? "";
+}
+
 function formatItemEffect(item) {
+  if (Array.isArray(item.powers) && item.powers.length) {
+    return item.powers.map(formatItemPower).join(", ");
+  }
   const sign = Number(item.value) >= 0 ? "+" : "";
   return `${sign}${item.value} ${item.powerLabel}`;
+}
+
+function formatItemPower(power) {
+  if (power.text) return power.text;
+  const sign = Number(power.data) >= 0 ? "+" : "";
+  const details = [];
+  if (Number.isInteger(power.chance)) details.push(`${power.chance}% chance`);
+  if (Number.isInteger(power.level)) details.push(`level ${power.level}`);
+  const suffix = details.length ? ` (${details.join(", ")})` : "";
+  return `${sign}${power.data} ${power.typeLabel}${suffix}`;
 }
 
 function formatSlotAccepts(slot) {
@@ -1183,13 +1250,21 @@ function heroPreviewPanel(summary, race, heroClass, avatarId) {
   const radiusMetrics = getCommandRadiusSceneMetrics(summary.command);
   const avatarOptions = getAllAvatarOptions();
   const spell = getSpellPreview(previewSpellId);
+  const spellSphereId = normalizeSpellPreviewSphereId(spell.sphereId);
+  const spellGroup = getSpellPreviewGroup(spellSphereId);
   const spellControl =
     animation.id === "spell"
       ? `
           <label>
+            <span>Spell Sphere</span>
+            <select id="hero-spell-sphere-select">
+              ${spellPreviewGroups.map((group) => option(group.id, group.label, spellSphereId)).join("")}
+            </select>
+          </label>
+          <label>
             <span>Spell</span>
             <select id="hero-spell-select">
-              ${spellPreviewSpells.map((item) => option(item.id, `${item.sphereLabel} / ${item.label}`, spell.id)).join("")}
+              ${spellGroup.spells.map((item) => option(item.id, getSpellDisplayName(item), spell.id)).join("")}
             </select>
           </label>
         `
@@ -1241,6 +1316,15 @@ function heroPreviewPanel(summary, race, heroClass, avatarId) {
       </div>
     </details>
   `;
+}
+
+function normalizeSpellPreviewSphereId(value) {
+  const id = String(value ?? "");
+  return spellPreviewGroups.some((group) => group.id === id) ? id : spellPreviewGroups[0]?.id;
+}
+
+function getSpellPreviewGroup(sphereId) {
+  return spellPreviewGroups.find((group) => group.id === sphereId) ?? spellPreviewGroups[0];
 }
 
 function currentAvatarId() {
@@ -1991,24 +2075,6 @@ function getHeroPreviewFrameDuration(summary, animation, frameCount) {
   return 105;
 }
 
-function skillEffectList(effects) {
-  return `
-    <div class="skill-effects-inline">
-      ${effects.map(skillEffectRow).join("")}
-    </div>
-  `;
-}
-
-function skillEffectRow(effect) {
-  return `
-    <div class="skill-effect-row">
-      <span>${escapeHtml(effect.label)}</span>
-      <strong>${escapeHtml(effect.value)}</strong>
-      ${effect.detail ? `<small>${escapeHtml(effect.detail)}</small>` : ""}
-    </div>
-  `;
-}
-
 function getSkillUnlockText(unlock) {
   if (unlock.availableAt <= 1) return "start";
   if (unlock.levelAvailable && !unlock.prerequisiteMet) {
@@ -2063,7 +2129,7 @@ function moraleEffectsSection(summary) {
         <strong>${summary.morale}</strong>
       </div>
       <div class="morale-effects-list">
-        ${moraleEffectRow("Army Limit Bonus", summary.armyLimitBonus)}
+        ${moraleEffectRow("Army Limit Bonus", formatSignedValue(summary.armyLimitBonus))}
         ${moraleEffectRow("Command Effect", `${summary.commandEffect}s`)}
         ${moraleEffectRow("Unit Attack Speed", formatUnitAttackSpeed(summary.unitAttackSpeed))}
       </div>
@@ -2087,6 +2153,10 @@ function groupSkillEffectsBySkill(effects = []) {
     groups.get(effect.skillId).push(effect);
   }
   return groups;
+}
+
+function getSortedHeroClasses() {
+  return [...heroClasses].sort((left, right) => left.displayName.localeCompare(right.displayName));
 }
 
 function iconMarkup(iconKey) {
@@ -2219,8 +2289,21 @@ function formatSeconds(milliseconds) {
 }
 
 function formatMerchant(value) {
-  const sign = value.discountPercent > 0 ? "+" : "";
-  return `${value.score} (${sign}${value.discountPercent.toFixed(1)}%)`;
+  const percent = Number(value.discountPercent) || 0;
+  if (percent > 0) return `${value.score} (+${percent.toFixed(1)}% discount)`;
+  if (percent < 0) return `${value.score} (${Math.abs(percent).toFixed(1)}% markup)`;
+  return String(value.score);
+}
+
+function formatSignedValue(value) {
+  const number = Math.trunc(Number(value) || 0);
+  return number > 0 ? `+${number}` : String(number);
+}
+
+function formatPercentBonus(value) {
+  const number = Math.trunc(Number(value) || 0);
+  const sign = number >= 0 ? "+" : "";
+  return `${sign}${number}%`;
 }
 
 function loadSavedBuilds() {
@@ -2348,7 +2431,7 @@ function cloneSavedBuild(value, fallbackId = "", fallbackRulesetId = VANILLA_RUL
   const classId = ruleset.data.heroClasses.some((entry) => entry.id === value.classId) ? String(value.classId) : fallbackBuild.classId;
   return {
     id: String(value.id || fallbackId || `saved-${Date.now()}`),
-    name: String(value.name || "Unnamed Build"),
+    name: value.name == null ? "Unnamed Build" : String(value.name),
     rulesetId,
     raceId,
     classId,
@@ -2397,6 +2480,8 @@ render();
 loadLocalPathStatus();
 loadLocalHeroBuilds();
 loadLocalItems();
+loadLocalSpellText();
+loadLocalSkillText();
 
 async function loadLocalPathStatus() {
   try {
@@ -2455,6 +2540,77 @@ async function loadLocalItems() {
   }
 }
 
+async function loadLocalSpellText() {
+  try {
+    const response = await fetch("/api/local/spells", { cache: "no-store" });
+    const body = await response.json().catch(() => null);
+    if (!response.ok || !body?.ok) {
+      localSpellTextByIndex = new Map();
+      localSpellTextError =
+        body?.error === "Unknown API endpoint"
+          ? ""
+          : body?.error
+            ? `Spell descriptions failed: ${body.error}`
+            : "";
+      render();
+      return;
+    }
+
+    localSpellTextByIndex = new Map(
+      (Array.isArray(body.spells) ? body.spells : [])
+        .filter((spell) => Number.isInteger(Number(spell.index)))
+        .map((spell) => [
+          Number(spell.index),
+          {
+            name: String(spell.name ?? ""),
+            description: String(spell.description ?? ""),
+          },
+        ]),
+    );
+    localSpellTextError = "";
+    render();
+  } catch {
+    // Static web hosting does not provide the local desktop API.
+  }
+}
+
+async function loadLocalSkillText() {
+  try {
+    const response = await fetch("/api/local/skills", { cache: "no-store" });
+    const body = await response.json().catch(() => null);
+    if (!response.ok || !body?.ok) {
+      localSkillTextById = new Map();
+      localSkillMagicTemplates = {};
+      localSkillTextError =
+        body?.error === "Unknown API endpoint"
+          ? ""
+          : body?.error
+            ? `Skill descriptions failed: ${body.error}`
+            : "";
+      render();
+      return;
+    }
+
+    localSkillTextById = new Map(
+      (Array.isArray(body.skills) ? body.skills : [])
+        .filter((skill) => skill?.id)
+        .map((skill) => [
+          String(skill.id),
+          {
+            name: String(skill.name ?? ""),
+            descriptionTemplate: String(skill.descriptionTemplate ?? ""),
+            kind: String(skill.kind ?? "skill"),
+          },
+        ]),
+    );
+    localSkillMagicTemplates = body.magicTemplates && typeof body.magicTemplates === "object" ? body.magicTemplates : {};
+    localSkillTextError = "";
+    render();
+  } catch {
+    // Static web hosting does not provide the local desktop API.
+  }
+}
+
 async function saveLocalPathSettings(form) {
   const formData = new FormData(form);
   const payload = {
@@ -2482,6 +2638,8 @@ async function saveLocalPathSettings(form) {
     localPathStatus = body.pathStatus ?? localPathStatus;
     localSettingsStatus = "Paths saved.";
     loadLocalItems();
+    loadLocalSpellText();
+    loadLocalSkillText();
 
     if (body.heroImport?.ok) {
       localHeroImportError = "";

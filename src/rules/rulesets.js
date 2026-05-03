@@ -9,7 +9,7 @@ export const defaultRulesetId = VANILLA_RULESET_ID;
 
 const createDefaultBuild = (rulesetId, raceId = "knight", classId = "warrior") => ({
   rulesetId,
-  name: "New Hero",
+  name: "",
   raceId,
   classId,
   level: 1,

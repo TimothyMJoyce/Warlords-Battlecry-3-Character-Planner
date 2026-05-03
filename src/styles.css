@@ -509,7 +509,7 @@ html[data-theme="light"] .theme-icon::after {
 }
 
 .hero-preview-panel {
-  margin-bottom: 16px;
+  margin-top: 16px;
   overflow: hidden;
 }
 
@@ -965,6 +965,20 @@ input {
   overflow-wrap: anywhere;
 }
 
+.skill-info small {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.skill-description-cell {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
 .strength-panel .stat-row,
 .intelligence-panel .stat-row,
 .dexterity-panel .stat-row,
@@ -1261,40 +1275,6 @@ output {
   font-size: 0.94rem;
 }
 
-.skill-effects-inline {
-  display: grid;
-  align-content: center;
-  gap: 6px;
-  min-width: 0;
-}
-
-.skill-effect-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 2px 8px;
-  border-left: 3px solid var(--blue);
-  border-radius: 6px;
-  padding: 6px 8px;
-  background: var(--panel-soft);
-}
-
-.skill-effect-row span,
-.skill-effect-row small {
-  color: var(--muted);
-  font-size: 0.75rem;
-}
-
-.skill-effect-row strong {
-  color: var(--blue);
-  font-size: 0.84rem;
-  overflow-wrap: anywhere;
-}
-
-.skill-effect-row small {
-  grid-column: 1 / -1;
-  line-height: 1.25;
-}
-
 .skills-list {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 620px), 1fr));
@@ -1303,11 +1283,6 @@ output {
 
 .skill-row.is-locked {
   opacity: 0.62;
-}
-
-.spell-spheres-list {
-  display: grid;
-  gap: 12px;
 }
 
 .spell-sphere-card {
@@ -1319,46 +1294,70 @@ output {
   background: var(--control-bg);
 }
 
-.spell-sphere-card header {
+.spell-sphere-tabs {
   display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.spell-sphere-tab {
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.spell-sphere-card header strong {
-  color: var(--green);
-}
-
-.spell-sphere-card header span {
-  color: var(--muted);
-  font-size: 0.8rem;
+  gap: 8px;
+  border-radius: 999px;
+  padding: 7px 10px;
+  background: var(--control-bg);
+  color: var(--text);
+  font-size: 0.78rem;
   font-weight: 900;
 }
 
-.spell-sphere-columns {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+.spell-sphere-tab.has-spells {
+  border-color: var(--gold);
 }
 
-.spell-column {
+.spell-sphere-tab.has-spells::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--gold);
+}
+
+.spell-sphere-tab.is-active {
+  border-color: var(--green);
+  background: var(--active-bg);
+  color: var(--green);
+}
+
+.spell-list {
   display: grid;
-  align-content: start;
-  gap: 8px;
+  gap: 6px;
 }
 
 .spell-row {
-  grid-template-columns: minmax(130px, 0.9fr) minmax(210px, 1.2fr) 82px 42px;
+  display: grid;
+  grid-template-columns: minmax(150px, 0.36fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
   padding: 8px;
   background: var(--panel-soft);
 }
 
-.spell-preview-button {
-  border-radius: 6px;
-  padding: 7px 8px;
-  font-size: 0.76rem;
-  font-weight: 900;
+.spell-row strong {
+  color: var(--green);
+  font-size: 0.84rem;
+}
+
+.spell-row p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.25;
 }
 
 .items-panel-grid {
@@ -1370,11 +1369,10 @@ output {
 
 .equipment-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   grid-template-areas:
-    ". crown helm necklace ."
-    "weapon armor armor shield banner"
-    ". ring1 boots ring2 .";
+    "head body weapon offhand"
+    ". ring1 ring2 boots";
   gap: 8px;
   padding: 12px;
   border: 1px solid var(--line);
@@ -1394,32 +1392,20 @@ output {
   text-align: center;
 }
 
-.equipment-slot-crown {
-  grid-area: crown;
+.equipment-slot-head {
+  grid-area: head;
 }
 
-.equipment-slot-helm {
-  grid-area: helm;
-}
-
-.equipment-slot-necklace {
-  grid-area: necklace;
+.equipment-slot-body {
+  grid-area: body;
 }
 
 .equipment-slot-weapon {
   grid-area: weapon;
 }
 
-.equipment-slot-armor {
-  grid-area: armor;
-}
-
-.equipment-slot-shield {
-  grid-area: shield;
-}
-
-.equipment-slot-banner {
-  grid-area: banner;
+.equipment-slot-offhand {
+  grid-area: offhand;
 }
 
 .equipment-slot-ring1 {
@@ -1621,11 +1607,12 @@ output {
 
   .stat-row,
   .skill-row,
+  .spell-row,
   .saved-row {
     grid-template-columns: 1fr;
   }
 
-  .spell-sphere-columns,
+  .spell-list,
   .items-panel-grid,
   .equipment-grid {
     grid-template-columns: 1fr;
@@ -1633,13 +1620,10 @@ output {
 
   .equipment-grid {
     grid-template-areas:
-      "crown"
-      "helm"
-      "necklace"
+      "head"
+      "body"
       "weapon"
-      "armor"
-      "shield"
-      "banner"
+      "offhand"
       "ring1"
       "ring2"
       "boots";

@@ -247,7 +247,7 @@ export function calculateHeroSummary(build) {
   const unitAttackSpeed = calculateUnitAttackSpeed(morale);
   const merchant = calculateMerchant(stats, skillLevels);
   const command = calculateCommand(stats);
-  const commandRadius = getEffectiveCommandRadius(command);
+  const commandRadius = calculateCommandRadius(stats);
   const groupLimit = getGroupLimitFromCommand(command);
   const conversion = calculateConversion(level);
   const conversionTime = getConversionTime(conversion);
@@ -319,7 +319,7 @@ export function calculateSkillEffectList(skillLevels = {}, options = {}) {
   const hasListedSkill = (skillId) => Object.prototype.hasOwnProperty.call(skillLevels ?? {}, skillId);
   const currentLevel = (skillId) => Math.max(0, Math.trunc(skillLevels?.[skillId] ?? 0));
   const shouldInclude = (skillId) => (includeInactive ? hasListedSkill(skillId) : hasSkill(skillLevels, skillId));
-  const add = (skillId, label, value, detail = "", category = "Skill Effects") => {
+  const add = (skillId, label, value, detail = "", category = "Skill Effects", rawValue = null, skillLevel = currentLevel(skillId)) => {
     if (!shouldInclude(skillId)) return;
     effects.push({
       skillId,
@@ -327,13 +327,16 @@ export function calculateSkillEffectList(skillLevels = {}, options = {}) {
       value,
       detail,
       category,
+      rawValue,
+      skillLevel,
       dataNote: dataNotes.skillEffects,
     });
   };
   const addSkillEffect = (skillId, label, formatter, detail = "", category = "Skill Effects") => {
     if (!shouldInclude(skillId)) return;
     const level = currentLevel(skillId);
-    add(skillId, label, formatter(skillEffect(skillId, level), level), detail, category);
+    const rawValue = skillEffect(skillId, level);
+    add(skillId, label, formatter(rawValue, level), detail, category, rawValue, level);
   };
   const signed = (value) => formatSigned(value);
   const signedPercent = (value) => `${formatSigned(value)}%`;
@@ -359,7 +362,7 @@ export function calculateSkillEffectList(skillLevels = {}, options = {}) {
   );
   addSkillEffect("mightyBlow", "Mighty Blow Damage", (value) => signed(value), "Added to hero weapon damage", "Combat");
   addSkillEffect("leech", "Mana Leech", (value) => signed(value), "Mana drained on hit", "Combat");
-  addSkillEffect("vampirism", "Vampirism", (value) => signed(value), "Life drain score", "Combat");
+  addSkillEffect("vampirism", "Vampirism", (value) => signed(value), "Steals life with each damaging melee hit", "Combat");
   addSkillEffect("thievery", "Thievery Score", (value) => value, "Per-hit theft check for Thief heroes", "Combat");
   addSkillEffect("shadowStrength", "Night Combat", (value) => signed(value), "Only applies at night", "Combat");
   addSkillEffect("swiftness", "Swiftness", (value) => signedPercent(value), "Attack speed multiplier bonus", "Combat");
@@ -373,6 +376,8 @@ export function calculateSkillEffectList(skillLevels = {}, options = {}) {
       `${damagePercent}% damage / ${getFireMissileRange(level)} range`,
       "Switches hero attack to Hot and Pointy",
       "Combat",
+      damagePercent,
+      level,
     );
   }
 
@@ -531,6 +536,10 @@ export function calculateMerchant(stats, skillLevels = {}) {
 
 export function calculateCommand(stats) {
   return 5 + stats.charisma;
+}
+
+export function calculateCommandRadius(stats) {
+  return bonus(stats, "commandRadius");
 }
 
 export function getEffectiveCommandRadius(command) {

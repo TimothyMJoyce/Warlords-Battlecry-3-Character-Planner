@@ -12,6 +12,8 @@ import { readLocalPathSettings, writeLocalPathSettings } from "./local-settings.
 import { readAvatarAnimationAsset, readEffectAnimationAsset, readSpriteAnimationAsset } from "./wbc3-animation-reader.mjs";
 import { readTerrainTileAsset } from "./wbc3-terrain-reader.mjs";
 import { readItemCatalog } from "./wbc3-items-reader.mjs";
+import { readSpellTextCatalog } from "./wbc3-spells-reader.mjs";
+import { readSkillTextCatalog } from "./wbc3-game-text-reader.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const dist = resolve(root, "dist");
@@ -25,6 +27,8 @@ const sceneObjectAssetCache = new Map();
 const effectAssetCache = new Map();
 const terrainAssetCache = new Map();
 const itemCatalogCache = new Map();
+const spellTextCache = new Map();
+const skillTextCache = new Map();
 
 const sceneObjectDefinitions = {
   goldMine: {
@@ -162,6 +166,18 @@ async function handleApiRequest(request, url, response) {
 
   if (url.pathname === "/api/local/items") {
     const body = await getLocalItems();
+    sendJson(response, body.ok ? 200 : 404, body);
+    return;
+  }
+
+  if (url.pathname === "/api/local/spells") {
+    const body = await getLocalSpells();
+    sendJson(response, body.ok ? 200 : 404, body);
+    return;
+  }
+
+  if (url.pathname === "/api/local/skills") {
+    const body = await getLocalSkills();
     sendJson(response, body.ok ? 200 : 404, body);
     return;
   }
@@ -372,6 +388,55 @@ async function getLocalItems() {
       ok: false,
       available: false,
       items: [],
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+async function getLocalSpells() {
+  try {
+    const settings = await readLocalPathSettings();
+    const cacheKey = JSON.stringify({
+      gameInstallDir: settings.gameInstallDir,
+    });
+
+    if (spellTextCache.has(cacheKey)) {
+      return spellTextCache.get(cacheKey);
+    }
+
+    const body = await readSpellTextCatalog(settings.gameInstallDir);
+    spellTextCache.set(cacheKey, body);
+    return body;
+  } catch (error) {
+    return {
+      ok: false,
+      source: "",
+      spells: [],
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+async function getLocalSkills() {
+  try {
+    const settings = await readLocalPathSettings();
+    const cacheKey = JSON.stringify({
+      gameInstallDir: settings.gameInstallDir,
+    });
+
+    if (skillTextCache.has(cacheKey)) {
+      return skillTextCache.get(cacheKey);
+    }
+
+    const body = await readSkillTextCatalog(settings.gameInstallDir);
+    skillTextCache.set(cacheKey, body);
+    return body;
+  } catch (error) {
+    return {
+      ok: false,
+      source: "",
+      skills: [],
+      magicTemplates: {},
       error: error instanceof Error ? error.message : String(error),
     };
   }
