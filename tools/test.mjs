@@ -224,6 +224,17 @@ assert.doesNotMatch(appSource, /spell-preview-button/);
 assert.match(appSource, /data-hero-rotate/);
 assert.match(appSource, /spellSpheresPanel\(summary\)/);
 assert.match(appSource, /itemsPanel\(\)/);
+assert.match(appSource, /item-icon/);
+assert.match(appSource, /item-shine/);
+assert.match(appSource, /localItemShineSprites/);
+assert.match(appSource, /power\.displayText/);
+assert.match(appSource, /data-item-filter/);
+assert.match(appSource, /itemLevelFilter/);
+assert.match(appSource, /normalizeItemLevelFilter/);
+assert.match(appSource, /data-item-page-delta/);
+assert.match(appSource, /itemSearchPageSize/);
+assert.match(appSource, /getVisibleItemSearchPage/);
+assert.match(appSource, /clampItemSearchPage/);
 assert.doesNotMatch(appSource, /4:3 preview \/ \$\{escapeHtml\(animation\.label\)\}/);
 assert.deepEqual(getCommandRadiusSceneMetrics(25), {
   radius: 19,
@@ -588,9 +599,29 @@ try {
   assert.equal(itemCatalog.ok, true);
   assert.equal(itemCatalog.available, true);
   assert.equal(itemCatalog.items.length > 100, true);
+  assert.equal(itemCatalog.items.every((item) => item.effectText), true);
+  assert.equal(itemCatalog.items.every((item) => item.iconSrc.startsWith("data:image/png;base64,iVBORw0KGgo")), true);
+  assert.equal(itemCatalog.items.flatMap((item) => item.powers).every((power) => power.displayText), true);
+  assert.equal(itemCatalog.shineSprites.artifact.startsWith("data:image/png;base64,iVBORw0KGgo"), true);
+  assert.equal(itemCatalog.shineSprites.set.startsWith("data:image/png;base64,iVBORw0KGgo"), true);
+  assert.equal(itemCatalog.items.filter((item) => item.shine === "artifact").length, 21);
+  assert.equal(itemCatalog.items.filter((item) => item.shine === "set").length, 28);
   assert.equal(itemCatalog.items[0].name, "Gnarled Staff");
   assert.equal(itemCatalog.items[0].description.length > 20, true);
   assert.equal(itemCatalog.items[0].powers[1].typeLabel, "Spell Casting");
+  assert.equal(itemCatalog.items[0].effectText, "+5 Damage (crushing), +5% Spellcasting");
+  assert.deepEqual(itemCatalog.items[0].icon, { row: 1, col: 2, rawCol: 1, width: 70, height: 110 });
+  assert.equal(itemCatalog.items[0].iconSrc.startsWith("data:image/png;base64,iVBORw0KGgo"), true);
+  assert.equal(
+    itemCatalog.items.find((item) => item.name === "Merchant's Belt").effectText,
+    "+5 Merchant skill (9.09% Discount), -1 Morale",
+  );
+  assert.equal(
+    itemCatalog.items.find((item) => item.name === "Ring of Fire and Ice").effectText,
+    "Casts Ring Of Ice (5% chance per hit), Casts Ring of Fire (5% chance per hit)",
+  );
+  assert.equal(itemCatalog.items.find((item) => item.name === "Blackfire Axe").shine, "artifact");
+  assert.equal(itemCatalog.items.find((item) => item.name === "Helm of the Gods").shine, "set");
 
   const skillTextCatalog = await readSkillTextCatalog();
   assert.equal(skillTextCatalog.ok, true);

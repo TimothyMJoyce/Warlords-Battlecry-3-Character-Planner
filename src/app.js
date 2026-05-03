@@ -47,6 +47,12 @@ const savedBuildStorageKey = "wbc3-character-planner.savedBuilds.v1";
 const rulesetStorageKey = "wbc3-character-planner.ruleset.v1";
 const draftStorageKey = "wbc3-character-planner.drafts.v1";
 const themeStorageKey = "wbc3-character-planner.theme.v1";
+const itemLevelFilters = [
+  { id: "all", label: "All" },
+  { id: "artifact", label: "Artifact" },
+  { id: "set", label: "Set" },
+];
+const itemSearchPageSize = 8;
 
 document.title = "Warlords Battlecry 3 - Character Planner";
 
@@ -79,12 +85,15 @@ let localHeroImportError = "";
 let localSettingsStatus = "";
 let localItemCatalog = [];
 let localItemCatalogError = "";
+let localItemShineSprites = {};
 let localSpellTextByIndex = new Map();
 let localSpellTextError = "";
 let localSkillTextById = new Map();
 let localSkillMagicTemplates = {};
 let localSkillTextError = "";
 let itemSearchQuery = "";
+let itemLevelFilter = "all";
+let itemSearchPage = 0;
 let previewAnimationId = DEFAULT_HERO_ANIMATION_ID;
 let heroPreviewExpanded = false;
 let heroPreviewZoom = 1;
@@ -296,11 +305,13 @@ function render() {
             <h2>Strength</h2>
           </div>
           ${statAllocator("strength", startingStats, statValidation, pointBudget, summary)}
-          <div class="core-grid">
-            ${summaryItem("Life", summary.life, { secondary: formatRegen(summary.lifeRegen, "HP") })}
-            ${summaryItem("Damage", `${summary.damage} ${summary.damageType}`)}
-            ${summaryItem("Combat", summary.combat)}
-          </div>
+          ${derivedStatsSection("Strength Stats", `
+            <div class="core-grid">
+              ${summaryItem("Life", summary.life, { secondary: formatRegen(summary.lifeRegen, "HP") })}
+              ${summaryItem("Combat", summary.combat)}
+              ${summaryItem("Damage", `${summary.damage} ${summary.damageType}`)}
+            </div>
+          `)}
         </section>
 
         <section class="panel intelligence-panel">
@@ -308,11 +319,13 @@ function render() {
             <h2>Intelligence</h2>
           </div>
           ${statAllocator("intelligence", startingStats, statValidation, pointBudget, summary)}
-          <div class="core-grid">
-            ${summaryItem("Mana", summary.mana, { secondary: formatRegen(summary.manaRegen, "MP") })}
-            ${summaryItem("Spellcasting", formatPercentBonus(summary.spellcasting))}
-            ${summaryItem("Initial Troop XP", formatSignedValue(summary.initialTroopXp))}
-          </div>
+          ${derivedStatsSection("Intelligence Stats", `
+            <div class="core-grid">
+              ${summaryItem("Mana", summary.mana, { secondary: formatRegen(summary.manaRegen, "MP") })}
+              ${summaryItem("Spellcasting", formatPercentBonus(summary.spellcasting))}
+              ${summaryItem("Initial Troop XP", formatSignedValue(summary.initialTroopXp))}
+            </div>
+          `)}
         </section>
 
         <section class="panel dexterity-panel">
@@ -321,8 +334,12 @@ function render() {
           </div>
           ${statAllocator("dexterity", startingStats, statValidation, pointBudget, summary)}
           <div class="dexterity-grid">
-            ${summaryItem("Speed", summary.speed)}
-            ${summaryItem("Attack Speed", formatAttackSpeed(summary.attackSpeed))}
+            ${derivedStatsSection("Dexterity Stats", `
+              <div class="core-grid">
+                ${summaryItem("Speed", summary.speed)}
+                ${summaryItem("Attack Speed", formatAttackSpeed(summary.attackSpeed))}
+              </div>
+            `)}
             ${defenseGroup("Armor", summary.armor, [
               ["Piercing", summary.damageResistances.piercing],
               ["Slashing", summary.damageResistances.slashing],
@@ -344,8 +361,12 @@ function render() {
           ${statAllocator("charisma", startingStats, statValidation, pointBudget, summary)}
           <div class="summary-grid">
             ${moraleEffectsSection(summary)}
-            ${summaryItem("Merchant", formatMerchant(summary.merchant))}
-            ${summaryItem("Command Radius", summary.commandRadius, { secondary: `Conversion Time ${summary.conversionTime}s` })}
+            ${derivedStatsSection("Charisma Stats", `
+              <div class="core-grid">
+                ${summaryItem("Merchant", formatMerchant(summary.merchant))}
+                ${summaryItem("Command Radius", summary.commandRadius, { secondary: `Conversion Time ${summary.conversionTime}s` })}
+              </div>
+            `)}
           </div>
         </section>
 
@@ -464,11 +485,26 @@ function bindEvents() {
   itemSearchInput?.addEventListener("input", (event) => {
     const selectionStart = event.target.selectionStart;
     itemSearchQuery = event.target.value;
+    itemSearchPage = 0;
     render();
     window.requestAnimationFrame(() => {
       const nextInput = document.querySelector("#item-search-input");
       nextInput?.focus();
       nextInput?.setSelectionRange(selectionStart, selectionStart);
+    });
+  });
+
+  document.querySelectorAll("[data-item-filter]").forEach((button) => {
+    button.addEventListener("click", () => {
+      itemLevelFilter = normalizeItemLevelFilter(button.dataset.itemFilter);
+      itemSearchPage = 0;
+      render();
+    });
+  });
+
+  document.querySelectorAll("[data-item-page-delta]").forEach((button) => {
+    button.addEventListener("click", () => {
+      setItemSearchPage(itemSearchPage + Number(button.dataset.itemPageDelta));
     });
   });
 
@@ -1093,19 +1129,25 @@ function formatMagicSkillDescription(skillLevel) {
 
 function formatGameTemplate(template, values = []) {
   let index = 0;
+  const percentToken = "\u0000PERCENT\u0000";
   return String(template || "")
-    .replace(/%[0-9.]*[df]/g, () => {
+    .replace(/%%/g, percentToken)
+    .replace(/%([+]?)(?:0\.(\d+))?([dfs])/g, (match, sign, decimals, type) => {
       const value = values[index] ?? 0;
       index += 1;
-      return String(value);
+      if (type === "s") return String(value);
+
+      const number = Number(value) || 0;
+      const formatted = type === "f" && decimals ? number.toFixed(Number(decimals)) : String(Math.trunc(number));
+      return sign === "+" && number >= 0 ? `+${formatted}` : formatted;
     })
-    .replace(/%%/g, "%");
+    .replace(new RegExp(percentToken, "g"), "%");
 }
 
 function itemsPanel() {
   const equippedItems = normalizeEquippedItems(build.items);
   const equippedCount = equipmentSlots.filter((slot) => equippedItems[slot.id]).length;
-  const results = getVisibleItemSearchResults();
+  const searchPage = getVisibleItemSearchPage();
   return `
     <section class="panel items-panel">
       <div class="panel-heading">
@@ -1121,12 +1163,65 @@ function itemsPanel() {
             <span>Search Items</span>
             <input id="item-search-input" type="search" value="${escapeHtml(itemSearchQuery)}" placeholder="Search by name, slot, or effect" autocomplete="off" />
           </label>
+          ${itemFilterButtons()}
           <div class="item-search-results">
-            ${itemSearchResults(results)}
+            ${itemSearchResults(searchPage.items)}
           </div>
+          ${itemPaginationControls(searchPage)}
         </div>
       </div>
     </section>
+  `;
+}
+
+function itemFilterButtons() {
+  const counts = getItemFilterCounts();
+  return `
+    <div class="item-filter-bar" role="group" aria-label="Item rarity filter">
+      ${itemLevelFilters
+        .map((option) => {
+          const active = itemLevelFilter === option.id;
+          return `
+            <button
+              type="button"
+              class="item-filter-button ${active ? "is-active" : ""}"
+              data-item-filter="${escapeHtml(option.id)}"
+              aria-pressed="${active ? "true" : "false"}"
+            >
+              <span>${escapeHtml(option.label)}</span>
+              <strong>${counts[option.id] ?? 0}</strong>
+            </button>
+          `;
+        })
+        .join("")}
+    </div>
+  `;
+}
+
+function itemPaginationControls(searchPage) {
+  if (localItemCatalogError || !localItemCatalog.length || !searchPage.total) return "";
+  return `
+    <div class="item-pagination" aria-label="Item result pages">
+      <span>${searchPage.start} - ${searchPage.end} of ${searchPage.total}</span>
+      <span class="item-page-buttons">
+        <button
+          type="button"
+          class="item-page-button"
+          data-item-page-delta="-1"
+          aria-label="Previous item page"
+          title="Previous item page"
+          ${searchPage.page <= 0 ? "disabled" : ""}
+        >&larr;</button>
+        <button
+          type="button"
+          class="item-page-button"
+          data-item-page-delta="1"
+          aria-label="Next item page"
+          title="Next item page"
+          ${searchPage.page >= searchPage.pageCount - 1 ? "disabled" : ""}
+        >&rarr;</button>
+      </span>
+    </div>
   `;
 }
 
@@ -1157,28 +1252,108 @@ function itemSearchResults(results) {
 }
 
 function itemResult(item) {
+  const shineSprite = getItemShineSprite(item);
+  const iconImage = item.iconSrc
+    ? `<img class="item-icon" src="${escapeHtml(item.iconSrc)}" alt="" aria-hidden="true" />`
+    : `<span class="item-icon item-icon-placeholder" aria-hidden="true"></span>`;
+  const shine = shineSprite
+    ? `<span class="item-shine item-shine-${escapeHtml(item.shine)}" style="--item-shine-sprite: url(${escapeHtml(shineSprite)});" aria-hidden="true"></span>`
+    : "";
+  const icon = `<span class="item-icon-frame">${iconImage}${shine}</span>`;
+  const descriptionTooltip = item.description
+    ? `
+        <details class="item-description-tooltip">
+          <summary aria-label="${escapeHtml(`${item.name} description`)}">?</summary>
+          <p>${escapeHtml(item.description)}</p>
+        </details>
+      `
+    : "";
   return `
-    <button type="button" class="item-result" data-equip-item-id="${escapeHtml(item.id)}">
-      <span>
+    <article class="item-result">
+      ${icon}
+      <span class="item-result-text">
         <strong>${escapeHtml(item.name)}</strong>
-        <small>${escapeHtml(item.typeLabel)} / ${escapeHtml(formatItemEffect(item))}</small>
-        ${item.description ? `<small>${escapeHtml(item.description)}</small>` : ""}
+        <small>${escapeHtml(formatItemEffect(item))}</small>
       </span>
-      <em>Equip</em>
-    </button>
+      ${descriptionTooltip}
+      <button type="button" class="item-equip-button" data-equip-item-id="${escapeHtml(item.id)}">Equip</button>
+    </article>
   `;
 }
 
-function getVisibleItemSearchResults() {
+function getVisibleItemSearchPage() {
+  const items = getFilteredItemSearchResults();
+  const pageCount = Math.max(1, Math.ceil(items.length / itemSearchPageSize));
+  const page = clampItemSearchPage(itemSearchPage, pageCount);
+  itemSearchPage = page;
+  const startIndex = page * itemSearchPageSize;
+  const endIndex = Math.min(startIndex + itemSearchPageSize, items.length);
+  return {
+    items: items.slice(startIndex, endIndex),
+    total: items.length,
+    page,
+    pageCount,
+    start: items.length ? startIndex + 1 : 0,
+    end: endIndex,
+  };
+}
+
+function getFilteredItemSearchResults() {
   const query = itemSearchQuery.trim().toLowerCase();
-  const items = localItemCatalog.filter((item) => {
+  return localItemCatalog.filter((item) => {
+    if (!matchesItemLevelFilter(item)) return false;
     if (!query) return true;
     return [item.name, item.typeLabel, item.powerLabel, formatItemEffect(item), item.description]
       .join(" ")
       .toLowerCase()
       .includes(query);
   });
-  return items.slice(0, 12);
+}
+
+function setItemSearchPage(page) {
+  const pageCount = Math.max(1, Math.ceil(getFilteredItemSearchResults().length / itemSearchPageSize));
+  itemSearchPage = clampItemSearchPage(page, pageCount);
+  render();
+}
+
+function clampItemSearchPage(page, pageCount) {
+  const numericPage = Number.isFinite(Number(page)) ? Math.trunc(Number(page)) : 0;
+  return Math.min(Math.max(numericPage, 0), Math.max(pageCount - 1, 0));
+}
+
+function getItemFilterCounts() {
+  const counts = { all: localItemCatalog.length, artifact: 0, set: 0 };
+  localItemCatalog.forEach((item) => {
+    const filter = getItemFilterId(item);
+    if (filter === "artifact" || filter === "set") {
+      counts[filter] += 1;
+    }
+  });
+  return counts;
+}
+
+function matchesItemLevelFilter(item) {
+  if (itemLevelFilter === "all") return true;
+  return getItemFilterId(item) === itemLevelFilter;
+}
+
+function getItemFilterId(item) {
+  const shine = String(item?.shine ?? "").toLowerCase();
+  if (shine === "artifact" || shine === "set") return shine;
+  const level = String(item?.level ?? item?.powerLabel ?? "").toLowerCase();
+  if (level.includes("artifact")) return "artifact";
+  if (level === "set" || level.includes("set item")) return "set";
+  return "";
+}
+
+function normalizeItemLevelFilter(value) {
+  const filter = String(value ?? "").toLowerCase();
+  return itemLevelFilters.some((option) => option.id === filter) ? filter : "all";
+}
+
+function getItemShineSprite(item) {
+  const shine = String(item?.shine ?? "");
+  return shine ? String(localItemShineSprites[shine] ?? "") : "";
 }
 
 function getLocalItemById(itemId) {
@@ -1220,6 +1395,7 @@ function getStoredItemIdForSlot(value, slotId) {
 }
 
 function formatItemEffect(item) {
+  if (item.effectText) return String(item.effectText);
   if (Array.isArray(item.powers) && item.powers.length) {
     return item.powers.map(formatItemPower).join(", ");
   }
@@ -1228,6 +1404,7 @@ function formatItemEffect(item) {
 }
 
 function formatItemPower(power) {
+  if (power.displayText) return power.displayText;
   if (power.text) return power.text;
   const sign = Number(power.data) >= 0 ? "+" : "";
   const details = [];
@@ -2083,6 +2260,15 @@ function getSkillUnlockText(unlock) {
   return `level ${unlock.availableAt}`;
 }
 
+function derivedStatsSection(title, content) {
+  return `
+    <section class="derived-section">
+      <h3>${escapeHtml(title)}</h3>
+      ${content}
+    </section>
+  `;
+}
+
 function summaryItem(label, value, options = {}, iconKeyOverride = summaryIconKeys[label]) {
   const settings = typeof options === "string" ? { tooltip: options, iconKey: iconKeyOverride } : options;
   const tooltip = settings.tooltip ?? "";
@@ -2290,7 +2476,7 @@ function formatSeconds(milliseconds) {
 
 function formatMerchant(value) {
   const percent = Number(value.discountPercent) || 0;
-  if (percent > 0) return `${value.score} (+${percent.toFixed(1)}% discount)`;
+  if (percent > 0) return `${value.score} (${percent.toFixed(1)}% discount)`;
   if (percent < 0) return `${value.score} (${Math.abs(percent).toFixed(1)}% markup)`;
   return String(value.score);
 }
@@ -2522,6 +2708,7 @@ async function loadLocalItems() {
     const body = await response.json().catch(() => null);
     if (!response.ok || !body?.ok) {
       localItemCatalog = [];
+      localItemShineSprites = {};
       localItemCatalogError =
         body?.error === "Unknown API endpoint"
           ? "Item search needs the current desktop server. Close and reopen WBC3 Planner."
@@ -2533,6 +2720,7 @@ async function loadLocalItems() {
     }
 
     localItemCatalog = Array.isArray(body.items) ? body.items : [];
+    localItemShineSprites = body.shineSprites && typeof body.shineSprites === "object" ? body.shineSprites : {};
     localItemCatalogError = "";
     render();
   } catch {

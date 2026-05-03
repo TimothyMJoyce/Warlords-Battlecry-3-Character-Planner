@@ -372,6 +372,7 @@ async function getLocalItems() {
     const settings = await readLocalPathSettings();
     const cacheKey = JSON.stringify({
       gameInstallDir: settings.gameInstallDir,
+      graphicsPath: settings.graphicsPath,
     });
 
     if (itemCatalogCache.has(cacheKey)) {
@@ -380,6 +381,7 @@ async function getLocalItems() {
 
     const body = await readItemCatalog({
       gameInstallDir: settings.gameInstallDir,
+      graphicsPath: settings.graphicsPath,
     });
     itemCatalogCache.set(cacheKey, body);
     return body;
