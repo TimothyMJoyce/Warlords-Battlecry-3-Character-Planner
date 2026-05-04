@@ -476,6 +476,7 @@ function bindEvents() {
       render();
     });
   });
+  bindPortraitPickerKeyboard();
 
   document.querySelectorAll("[data-stat-action]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -726,6 +727,73 @@ function isTextEditingControl(target) {
   const element = target instanceof HTMLElement ? target : null;
   if (!element) return false;
   return element.matches("input:not([type='button']):not([type='submit']):not([type='reset']), textarea, [contenteditable='true']");
+}
+
+function bindPortraitPickerKeyboard() {
+  const menu = document.querySelector(".portrait-menu");
+  const summary = menu?.querySelector("summary");
+  const options = menu?.querySelector(".portrait-options");
+  if (!menu || !summary || !options) return;
+
+  summary.addEventListener("keydown", (event) => {
+    if (!["ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    menu.open = true;
+    focusPortraitOption(
+      menu,
+      event.key === "ArrowUp" || event.key === "ArrowLeft" || event.key === "End" ? "last-selected" : "selected",
+    );
+  });
+
+  options.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closePortraitPicker(menu);
+      return;
+    }
+
+    if (!["ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+
+    const buttons = getPortraitOptionButtons(menu);
+    const currentIndex = buttons.indexOf(event.target);
+    if (!buttons.length || currentIndex < 0) return;
+
+    const columnCount = getPortraitPickerColumnCount(menu);
+    let nextIndex = currentIndex;
+    if (event.key === "ArrowRight") nextIndex = currentIndex + 1;
+    if (event.key === "ArrowLeft") nextIndex = currentIndex - 1;
+    if (event.key === "ArrowDown") nextIndex = currentIndex + columnCount;
+    if (event.key === "ArrowUp") nextIndex = currentIndex - columnCount;
+    if (event.key === "Home") nextIndex = 0;
+    if (event.key === "End") nextIndex = buttons.length - 1;
+
+    buttons[Math.max(0, Math.min(buttons.length - 1, nextIndex))]?.focus();
+  });
+}
+
+function focusPortraitOption(menu, mode = "selected") {
+  const buttons = getPortraitOptionButtons(menu);
+  if (!buttons.length) return;
+  const selectedIndex = buttons.findIndex((button) => button.getAttribute("aria-selected") === "true");
+  const fallbackIndex = mode === "last-selected" ? buttons.length - 1 : 0;
+  buttons[selectedIndex >= 0 ? selectedIndex : fallbackIndex]?.focus();
+}
+
+function closePortraitPicker(menu) {
+  menu.open = false;
+  menu.querySelector("summary")?.focus();
+}
+
+function getPortraitOptionButtons(menu) {
+  return Array.from(menu.querySelectorAll("[data-portrait-id]"));
+}
+
+function getPortraitPickerColumnCount(menu) {
+  const options = menu.querySelector(".portrait-options");
+  if (!options) return 1;
+  const columns = window.getComputedStyle(options).gridTemplateColumns.split(" ").filter(Boolean).length;
+  return Math.max(1, columns || 1);
 }
 
 function bindExclusiveTooltips() {
