@@ -76,6 +76,20 @@ import {
   rulesetOptions,
 } from "../src/rules/rulesets.js";
 
+function parseIcoEntries(buffer) {
+  const count = buffer.readUInt16LE(4);
+  return Array.from({ length: count }, (_, index) => {
+    const offset = 6 + index * 16;
+    const imageOffset = buffer.readUInt32LE(offset + 12);
+    const pngSignature = buffer.subarray(imageOffset, imageOffset + 8).toString("hex");
+    return {
+      size: buffer[offset] || 256,
+      bitCount: buffer.readUInt16LE(offset + 6),
+      kind: pngSignature === "89504e470d0a1a0a" ? "png" : "bmp",
+    };
+  });
+}
+
 const baseBuild = {
   raceId: "barbarian",
   classId: "chieftain",
@@ -205,6 +219,9 @@ const protectorsSummary = calculateProtectorsHeroSummary(protectorsBuild);
 assert.equal(protectorsSummary.moraleBreakdown.racialSkillId, "hornedLord");
 assert.equal(protectorsSummary.moraleViews.racial.morale, protectorsSummary.morale);
 assert.equal(protectorsSummary.moraleViews.general.morale, protectorsSummary.morale - protectorsSummary.moraleBreakdown.racial);
+assert.deepEqual(protectorsSummary.statBreakdowns.combat, ["Combat: Class base 7 + Ferocity + Strength bonus (54) 27 = 34"]);
+assert.equal(protectorsSummary.statModifierFlags.combat, true);
+assert.equal(protectorsSummary.statModifierFlags.morale, false);
 const missingProtectorsSkillDescriptions = protectorsSkills
   .filter((skill) => skill.id !== "null")
   .filter((skill) => calculateProtectorsSkillEffectList({ [skill.id]: 1 }, { includeInactive: true }).length === 0)
@@ -212,7 +229,59 @@ const missingProtectorsSkillDescriptions = protectorsSkills
 assert.deepEqual(missingProtectorsSkillDescriptions, []);
 
 const appSource = await readFile(new URL("../src/app.js", import.meta.url), "utf8");
+const gitignoreSource = await readFile(new URL("../.gitignore", import.meta.url), "utf8");
+const indexSource = await readFile(new URL("../index.html", import.meta.url), "utf8");
+const packageSource = await readFile(new URL("../package.json", import.meta.url), "utf8");
+const desktopDocSource = await readFile(new URL("../docs/desktop-app.md", import.meta.url), "utf8");
+const staticBuildScriptSource = await readFile(new URL("../tools/build.mjs", import.meta.url), "utf8");
+const desktopBuildScriptSource = await readFile(new URL("../tools/build-desktop-exe.ps1", import.meta.url), "utf8");
+const desktopStartScriptSource = await readFile(new URL("../tools/start-desktop.ps1", import.meta.url), "utf8");
+const importHeroDataSource = await readFile(new URL("../tools/import-hero-data.mjs", import.meta.url), "utf8");
+const launcherSource = await readFile(new URL("../tools/desktop/Wbc3PlannerLauncher.cs", import.meta.url), "utf8");
+const manifestSource = await readFile(new URL("../manifest.webmanifest", import.meta.url), "utf8");
+const serverSource = await readFile(new URL("../tools/server.mjs", import.meta.url), "utf8");
+const appIconEntries = parseIcoEntries(await readFile(new URL("../src/app-assets/app-icon.ico", import.meta.url)));
+assert.doesNotMatch(packageSource, /Start-WBC3-Planner/);
+assert.match(packageSource, /tools\\\\start-desktop\.ps1/);
+assert.match(packageSource, /"desktop:stop"/);
+assert.doesNotMatch(desktopDocSource, /Start-WBC3-Planner/);
+assert.match(desktopDocSource, /tools\/start-desktop\.ps1/);
+assert.match(desktopBuildScriptSource, /Join-Path \$BuildRoot "WBC3 Planner\.exe"/);
+assert.match(desktopStartScriptSource, /build\\WBC3 Planner\.exe/);
+assert.match(desktopStartScriptSource, /Run npm run build:desktop/);
+assert.match(gitignoreSource, /src\/data\/importedHeroBuilds\.local\.js/);
+assert.match(importHeroDataSource, /importedHeroBuilds\.local\.js/);
+assert.doesNotMatch(importHeroDataSource, /importedHeroBuilds\.js"\)/);
+assert.match(staticBuildScriptSource, /importedHeroBuilds\.local\.js/);
+assert.match(desktopBuildScriptSource, /importedHeroBuilds\.local\.js/);
+assert.match(desktopDocSource, /importedHeroBuilds\.local\.js/);
+assert.match(manifestSource, /"sizes": "256x256"/);
+assert.match(manifestSource, /16x16 24x24 32x32 48x48 64x64 128x128 256x256/);
+assert.match(manifestSource, /app-icon\.png\?v=wbc3-planner-cog-icon-20260504/);
+assert.match(manifestSource, /app-icon\.ico\?v=wbc3-planner-cog-icon-20260504/);
+assert.match(indexSource, /app-icon\.ico\?v=wbc3-planner-cog-icon-20260504/);
+assert.match(indexSource, /manifest\.webmanifest\?v=wbc3-planner-cog-icon-20260504/);
+assert.match(serverSource, /"\.ico": "image\/x-icon"/);
+assert.deepEqual(appIconEntries.map((entry) => entry.size), [16, 24, 32, 48, 64, 128, 256]);
+assert.equal(appIconEntries.every((entry) => entry.kind === "png" && entry.bitCount === 32), true);
+assert.match(launcherSource, /SetCurrentProcessExplicitAppUserModelID/);
+assert.match(launcherSource, /RepairPinnedTaskbarShortcuts/);
+assert.match(launcherSource, /SHGetPropertyStoreForWindow/);
+assert.match(launcherSource, /PkeyAppUserModelId/);
+assert.match(launcherSource, /Codex\.WBC3Planner\.Desktop/);
+assert.match(launcherSource, /886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99/);
+assert.match(launcherSource, /SetIconLocation\(iconPath, 0\)/);
+assert.match(launcherSource, /FindPlannerIconPath/);
+assert.match(launcherSource, /src", "app-assets", "app-icon.ico/);
+assert.match(launcherSource, /EdgeIconCacheVersion/);
+assert.match(launcherSource, /ClearEdgeIconCacheIfNeeded/);
+assert.match(launcherSource, /Favicons/);
+assert.match(launcherSource, /HubApps Icons/);
+assert.match(launcherSource, /JumpListIconsRecentClosed/);
 assert.match(appSource, /class="rules-menu"/);
+assert.match(appSource, /localImportedHeroBuildsModulePath/);
+assert.match(appSource, /loadLocalImportedHeroBuilds\(\)/);
+assert.match(appSource, /await import\(`\$\{localImportedHeroBuildsModulePath\}\?v=\$\{Date\.now\(\)\}`\)/);
 assert.match(appSource, /data-ruleset-id/);
 assert.match(appSource, /rulesetStorageKey/);
 assert.match(appSource, /function loadSavedBuild/);
@@ -262,6 +331,14 @@ assert.doesNotMatch(appSource, /weaponmaster: "criticalHit"/);
 assert.match(appSource, /data-morale-view/);
 assert.match(appSource, /morale-switcher/);
 assert.match(appSource, /moraleViewMode/);
+assert.match(appSource, /merchantItemBreakdown/);
+assert.match(appSource, /final discount changes by/);
+assert.match(appSource, /Calculation:/);
+assert.match(appSource, /statBreakdowns/);
+assert.match(appSource, /hasStatModifier/);
+assert.match(appSource, /statModifierFlags/);
+assert.match(appSource, /summaryIconKeys\[iconKey\] \?\? iconKey/);
+assert.match(appSource, /class="defense-stack"/);
 assert.match(appSource, /summary-tooltip/);
 assert.doesNotMatch(appSource, /4:3 preview \/ \$\{escapeHtml\(animation\.label\)\}/);
 assert.deepEqual(getCommandRadiusSceneMetrics(25), {
@@ -384,7 +461,24 @@ assert.deepEqual(summary.unitAttackSpeed, {
 assert.deepEqual(summary.merchant, {
   score: -1,
   discountPercent: -1,
+  baseScore: -1,
+  baseDiscountPercent: -1,
+  itemScore: 0,
+  itemDiscountDelta: 0,
 });
+assert.deepEqual(summary.statBreakdowns.life, ["Life: Class base 300 + Level growth 0 + Strength 40 + Constitution 0 = 340"]);
+assert.deepEqual(summary.statBreakdowns.merchant, [
+  "Merchant score: Charisma -1 + Merchant skill 0 + Items/item skill ranks 0 = -1",
+  "Final discount: score -1 => 1.0% markup",
+]);
+assert.deepEqual(summary.statBreakdowns.morale, [
+  "Morale: Charisma 2 + Leadership 0 + Horse Lord 1 + Items 0 = 3",
+  "General view excludes Horse Lord: 2; race view includes it: 3",
+]);
+assert.equal(summary.statModifierFlags.life, false);
+assert.equal(summary.statModifierFlags.combat, true);
+assert.equal(summary.statModifierFlags.merchant, false);
+assert.equal(summary.statModifierFlags.morale, true);
 assert.equal(summary.armySetupPoints, 1);
 assert.equal(summary.commandRadius, 7);
 assert.equal(summary.command, 9);
@@ -794,7 +888,17 @@ try {
   assert.equal(merchantBeltSummary.skillLevels.merchant ?? 0, 0);
   assert.equal(merchantBeltSummary.skillEffectList.some((effect) => effect.skillId === "merchant"), false);
   assert.equal(merchantBeltSummary.merchant.score, summary.merchant.score + 5);
-  assert.equal(merchantBeltSummary.itemEffects.breakdowns.merchant.some((entry) => entry.source === "Merchant's Belt"), true);
+  assert.deepEqual(merchantBeltSummary.merchant, {
+    score: 4,
+    discountPercent: 3.8,
+    baseScore: -1,
+    baseDiscountPercent: -1,
+    itemScore: 5,
+    itemDiscountDelta: 4.8,
+  });
+  assert.equal(merchantBeltSummary.itemEffects.breakdowns.merchant.some((entry) => entry.source === "Merchant's Belt" && entry.amount === 5), true);
+  assert.equal(merchantBeltSummary.itemBreakdowns.merchant.some((entry) => entry.source === "Merchant's Belt" && entry.amount === 5), true);
+  assert.equal(merchantBeltSummary.statModifierFlags.merchant, true);
 
   const staffSummary = calculateHeroSummary({
     ...itemDataBuild,

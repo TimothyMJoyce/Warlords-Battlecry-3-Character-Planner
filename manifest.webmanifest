@@ -7,13 +7,13 @@
   "theme_color": "#244f45",
   "icons": [
     {
-      "src": "./src/app-assets/app-icon.png",
-      "sizes": "64x64",
+      "src": "./src/app-assets/app-icon.png?v=wbc3-planner-cog-icon-20260504",
+      "sizes": "256x256",
       "type": "image/png"
     },
     {
-      "src": "./src/app-assets/app-icon.ico",
-      "sizes": "16x16 32x32 48x48",
+      "src": "./src/app-assets/app-icon.ico?v=wbc3-planner-cog-icon-20260504",
+      "sizes": "16x16 24x24 32x32 48x48 64x64 128x128 256x256",
       "type": "image/x-icon"
     }
   ]

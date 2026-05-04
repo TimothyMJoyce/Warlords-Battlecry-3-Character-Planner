@@ -266,7 +266,7 @@ export function calculateHeroSummary(build) {
   const commandEffect = moraleViews.racial.commandEffect;
   const armyLimitBonus = moraleViews.racial.armyLimitBonus;
   const unitAttackSpeed = moraleViews.racial.unitAttackSpeed;
-  const merchant = calculateMerchant(stats, skillLevels, itemEffects);
+  const merchant = calculateMerchant(stats, skillLevels, itemEffects, baseSkillLevels);
   const armySetupPoints = calculateArmySetupPoints(stats, skillLevels);
   const command = calculateCommand(stats, itemEffects);
   const commandRadius = getEffectiveCommandRadius(calculateCommandRadius(stats) + itemTotal(itemEffects, "command"));
@@ -277,6 +277,43 @@ export function calculateHeroSummary(build) {
   const retinueSlots = 8;
   const skillEffects = calculateConditionalSkillEffects(skillLevels, itemEffects);
   const skillEffectList = calculateSkillEffectList(skillLevels, { includeInactive: true, itemEffects });
+  const statBreakdowns = buildStatBreakdowns({
+    level,
+    heroClass,
+    stats,
+    skillLevels,
+    itemEffects,
+    combat,
+    speed,
+    attackSpeed,
+    life,
+    mana,
+    damage,
+    armor,
+    resistance,
+    damageResistances,
+    lifeRegen,
+    manaRegen,
+    spellcasting,
+    initialTroopXp,
+    morale,
+    moraleBreakdown,
+    merchant,
+    armySetupPoints,
+    command,
+    commandRadius,
+    conversion,
+    conversionTime,
+    rawDamageAdd,
+    fireMissileActive,
+  });
+  const statModifierFlags = buildStatModifierFlags({
+    skillLevels,
+    itemEffects,
+    moraleBreakdown,
+    merchant,
+    fireMissileActive,
+  });
 
   return {
     level,
@@ -318,6 +355,8 @@ export function calculateHeroSummary(build) {
     skillEffectList,
     itemEffects,
     itemBreakdowns,
+    statBreakdowns,
+    statModifierFlags,
     dataNotes: {
       formulas: dataNotes.derivedStats,
       statBonuses: dataNotes.statBonuses,
@@ -397,7 +436,7 @@ function buildItemBreakdowns(itemEffects = {}, baseSkillLevels = {}) {
     if (!delta) continue;
 
     for (const target of targets) {
-      addItemBreakdown(breakdowns, target.key, contribution.source, formatSkillItemBreakdown(contribution, delta, target));
+      addItemBreakdown(breakdowns, target.key, contribution.source, formatSkillItemBreakdown(contribution, delta, target), delta);
     }
   }
 
@@ -413,16 +452,179 @@ function cloneItemBreakdowns(value = {}) {
   );
 }
 
-function addItemBreakdown(breakdowns, key, source, text) {
+function addItemBreakdown(breakdowns, key, source, text, amount = null) {
   if (!key || !text) return;
   if (!breakdowns[key]) breakdowns[key] = [];
-  breakdowns[key].push({ source, text });
+  const entry = { source, text };
+  const numericAmount = Number(amount);
+  if (Number.isFinite(numericAmount)) entry.amount = numericAmount;
+  breakdowns[key].push(entry);
 }
 
 function formatSkillItemBreakdown(contribution, delta, target) {
   const value = target.format ? target.format(delta) : formatSigned(delta);
   const amount = formatSigned(contribution.amount);
   return `${value} ${target.label} from ${contribution.skillName} ${amount}`;
+}
+
+function buildStatBreakdowns({
+  level,
+  heroClass,
+  stats,
+  skillLevels,
+  itemEffects,
+  combat,
+  speed,
+  attackSpeed,
+  life,
+  mana,
+  damage,
+  armor,
+  resistance,
+  damageResistances,
+  lifeRegen,
+  manaRegen,
+  spellcasting,
+  initialTroopXp,
+  morale,
+  moraleBreakdown,
+  merchant,
+  armySetupPoints,
+  command,
+  commandRadius,
+  conversion,
+  conversionTime,
+  rawDamageAdd,
+  fireMissileActive,
+}) {
+  const item = (key) => itemTotal(itemEffects, key);
+  const skill = (key) => skillEffect(key, skillLevels[key]);
+  const levelLife = (level - 1) * heroClass.lifePerLevel;
+  const speedItems = item("speed") + item("speedAll") - item("slow") - item("slowAll");
+  const attackSpeedItems = item("speedAttack") + item("speedAll") - item("slowAttack") - item("slowAll");
+  const damageBonus = fireMissileActive ? Math.trunc(rawDamageAdd / 3) : rawDamageAdd;
+  const elemental = skill("elementalResistance");
+  const commandRadiusRaw = calculateCommandRadius(stats) + item("command");
+  const racialSkillName = moraleBreakdown.racialSkillId ? formatSkillName(moraleBreakdown.racialSkillId) : "Race morale";
+
+  return {
+    life: [equation("Life", [["Class base", heroClass.baseLife], ["Level growth", levelLife], ["Strength", bonus(stats, "life")], ["Constitution", skill("constitution")]], life)],
+    lifeRegen: [
+      equation("Regen points", [["Strength", bonus(stats, "lifeRegen")]], lifeRegen.pointsPer20Seconds),
+      `Period: 20s / ${lifeRegen.pointsPer20Seconds} points with +${lifeRegen.skillBonusPercent}% Regeneration = ${formatPeriod(lifeRegen.periodMs)} per HP`,
+    ],
+    combat: [equation("Combat", [["Strength", bonus(stats, "combat")], ["Ferocity", skill("ferocity")], ["Items", item("combat")]], combat)],
+    damage: [
+      equation("Damage", [["Base", 10], ["Strength", bonus(stats, "damage")], [fireMissileActive ? "Mighty Blow/items after Fire Missile" : "Mighty Blow/items", damageBonus]], damage),
+      ...(fireMissileActive ? [`Fire Missile changes the Mighty Blow/item damage part: ${rawDamageAdd} / 3 = ${damageBonus}`] : []),
+    ],
+    mana: [equation("Mana", [["Class base", heroClass.baseMana], ["Intelligence", bonus(stats, "mana")], ["Lore", skill("lore")]], mana)],
+    manaRegen: [
+      equation("Regen points", [["Intelligence", bonus(stats, "manaRegen")]], manaRegen.pointsPer20Seconds),
+      `Period: 20s / ${manaRegen.pointsPer20Seconds} points with +${manaRegen.skillBonusPercent}% Energy = ${formatPeriod(manaRegen.periodMs)} per MP`,
+    ],
+    spellcasting: [equation("Spellcasting", [["Intelligence", bonus(stats, "spellcasting")], ["Ritual", skill("ritual")], ["Items", item("spellcasting")]], `${formatSignedPercent(spellcasting)}`)],
+    initialTroopXp: [equation("Initial Troop XP", [["Intelligence", bonus(stats, "initialTroopXp")], ["Items", item("training")]], initialTroopXp)],
+    speed: [equation("Speed", [["Dexterity", bonus(stats, "speed")], ["Running", skill("running")], ["Items/slows", speedItems]], speed)],
+    attackSpeed: [
+      `Attack period: Dexterity ${attackSpeed.dexterityBonus}, Swiftness +${attackSpeed.swiftnessBonus}%, fight speed ${attackSpeed.fightSpeed}${attackSpeedItems ? ` (${formatSigned(attackSpeedItems)} from items/slows)` : ""} = ${formatPeriod(attackSpeed.periodMs)}`,
+    ],
+    conversionTime: [
+      equation("Conversion score", [["Level", 8 + Math.trunc(clampLevel(level) / 2)], ["Items", item("conversion")]], conversion),
+      `Conversion score ${conversion} uses the timing table = ${conversionTime}s`,
+    ],
+    armor: [equation("Armor", [["Class base", heroClass.baseArmor], ["Dexterity", bonus(stats, "armor")], ["Invulnerability", skill("invulnerability")], ["Items", item("armor")]], armor)],
+    resistance: [equation("Resistance", [["Class base", heroClass.baseResistance], ["Dexterity", bonus(stats, "resistance")], ["Warding", skill("warding")], ["Items", item("resistance")]], resistance)],
+    piercing: [equation("Piercing", [["Armor total", armor], ["Armorer", skill("armorer")]], damageResistances.piercing)],
+    slashing: [equation("Slashing", [["Armor total", armor], ["Scales", skill("scales")]], damageResistances.slashing)],
+    crushing: [equation("Crushing", [["Armor total", armor], ["Thick Hide", skill("thickHide")]], damageResistances.crushing)],
+    fire: [equation("Fire", [["Resistance total", resistance], ["Fire Resistance", skill("fireResistance")], ["Elemental Resistance", elemental], ["Items", item("fireResistance")]], damageResistances.fire)],
+    cold: [equation("Cold", [["Resistance total", resistance], ["Cold Resistance", skill("coldResistance")], ["Elemental Resistance", elemental], ["Items", item("coldResistance")]], damageResistances.cold)],
+    electricity: [equation("Electricity", [["Resistance total", resistance], ["Electricity Resistance", skill("electricityResistance")], ["Elemental Resistance", elemental], ["Items", item("electricityResistance")]], damageResistances.electricity)],
+    magic: [equation("Magic", [["Magic Resistance", skill("magicResistance")], ["Items", item("magicResistance")]], damageResistances.magic)],
+    morale: [
+      equation("Morale", [["Charisma", moraleBreakdown.stat], ["Leadership", moraleBreakdown.leadership], [racialSkillName, moraleBreakdown.racial], ["Items", moraleBreakdown.items]], morale),
+      `General view excludes ${racialSkillName}: ${moraleBreakdown.baseTotal}; race view includes it: ${moraleBreakdown.total}`,
+    ],
+    merchant: [
+      equation("Merchant score", [["Charisma", bonus(stats, "discount")], ["Merchant skill", merchant.baseScore - bonus(stats, "discount")], ["Items/item skill ranks", merchant.itemScore]], merchant.score),
+      `Final discount: score ${merchant.score} => ${formatMerchantPercent(merchant.discountPercent)}`,
+    ],
+    commandRadius: [
+      equation("Command Radius", [["Charisma", calculateCommandRadius(stats)], ["Items", item("command")]], commandRadiusRaw),
+      `Capped command radius: min(${commandRadiusRaw}, ${MAX_EFFECTIVE_COMMAND}) = ${commandRadius}`,
+    ],
+    armySetupPoints: [equation("Army Setup Points", [["Charisma", bonus(stats, "retinue")], ["Diplomacy", skill("diplomacy")]], armySetupPoints)],
+    command: [equation("Command", [["Base", 5], ["Charisma", stats.charisma], ["Items", item("command")]], command)],
+  };
+}
+
+function buildStatModifierFlags({ skillLevels, itemEffects, moraleBreakdown, merchant, fireMissileActive }) {
+  const skill = (key) => skillEffect(key, skillLevels[key]) !== 0;
+  const item = (key) => itemTotal(itemEffects, key) !== 0;
+  const speedItems = item("speed") || item("speedAll") || item("slow") || item("slowAll");
+  const attackSpeedItems = item("speedAttack") || item("speedAll") || item("slowAttack") || item("slowAll");
+  const elemental = skill("elementalResistance");
+
+  return {
+    life: skill("constitution") || item("health"),
+    lifeRegen: skill("regeneration") || item("lifeRegen"),
+    combat: skill("ferocity") || item("combat"),
+    damage: skill("mightyBlow") || item("weaponDamage") || fireMissileActive,
+    mana: skill("lore"),
+    manaRegen: skill("energy") || item("manaRegen"),
+    spellcasting: skill("ritual") || item("spellcasting"),
+    initialTroopXp: item("training"),
+    speed: skill("running") || speedItems,
+    attackSpeed: skill("swiftness") || attackSpeedItems || fireMissileActive,
+    conversionTime: item("conversion"),
+    armor: skill("invulnerability") || item("armor"),
+    resistance: skill("warding") || item("resistance"),
+    piercing: skill("armorer") || item("armor"),
+    slashing: skill("scales") || item("armor"),
+    crushing: skill("thickHide") || item("armor"),
+    fire: skill("fireResistance") || elemental || item("fireResistance") || item("resistance"),
+    cold: skill("coldResistance") || elemental || item("coldResistance") || item("resistance"),
+    electricity: skill("electricityResistance") || elemental || item("electricityResistance") || item("resistance"),
+    magic: skill("magicResistance") || item("magicResistance"),
+    morale: moraleBreakdown.leadership !== 0 || moraleBreakdown.racial !== 0 || moraleBreakdown.items !== 0,
+    merchant: skill("merchant") || merchant.itemScore !== 0,
+    commandRadius: item("command"),
+    armySetupPoints: skill("diplomacy"),
+    command: item("command"),
+  };
+}
+
+function equation(label, parts, total) {
+  return `${label}: ${formatEquationParts(parts)} = ${total}`;
+}
+
+function formatEquationParts(parts) {
+  return parts.map(([label, value], index) => formatEquationPart(label, value, index)).join(" ");
+}
+
+function formatEquationPart(label, value, index) {
+  const number = Number(value) || 0;
+  if (index === 0) return `${label} ${formatStatNumber(number)}`;
+  const prefix = index === 0 ? "" : number < 0 ? "- " : "+ ";
+  return `${prefix}${label} ${formatStatNumber(Math.abs(number))}`;
+}
+
+function formatStatNumber(value) {
+  const number = Number(value) || 0;
+  return Number.isInteger(number) ? String(number) : number.toFixed(2).replace(/\.00$/, "").replace(/0$/, "");
+}
+
+function formatPeriod(milliseconds) {
+  const seconds = Math.max(0, Number(milliseconds) || 0) / 1000;
+  return `${seconds.toFixed(2).replace(/\.00$/, "").replace(/0$/, "")}s`;
+}
+
+function formatMerchantPercent(value) {
+  const percent = Number(value) || 0;
+  if (percent > 0) return `${percent.toFixed(1)}% discount`;
+  if (percent < 0) return `${Math.abs(percent).toFixed(1)}% markup`;
+  return "0.0%";
 }
 
 function getDamageType(heroClass, skillLevels = {}, itemEffects = {}) {
@@ -684,13 +886,29 @@ export function calculateUnitAttackSpeed(morale) {
   };
 }
 
-export function calculateMerchant(stats, skillLevels = {}, itemEffects = {}) {
-  const score = bonus(stats, "discount") + skillEffect("merchant", skillLevels.merchant) + itemTotal(itemEffects, "merchant");
-  const discountPercent = score === 0 ? 0 : 100 - 100 * (100 / (score + 100));
+export function calculateMerchant(stats, skillLevels = {}, itemEffects = {}, baseSkillLevels = skillLevels) {
+  const statScore = bonus(stats, "discount");
+  const baseSkillScore = skillEffect("merchant", baseSkillLevels.merchant);
+  const skillScore = skillEffect("merchant", skillLevels.merchant);
+  const itemScore = skillScore - baseSkillScore + itemTotal(itemEffects, "merchant");
+  const baseScore = statScore + baseSkillScore;
+  const score = baseScore + itemScore;
+  const baseDiscountPercent = calculateMerchantDiscountPercent(baseScore);
+  const discountPercent = calculateMerchantDiscountPercent(score);
   return {
     score,
-    discountPercent: Number(discountPercent.toFixed(1)),
+    discountPercent,
+    baseScore,
+    baseDiscountPercent,
+    itemScore,
+    itemDiscountDelta: Number((discountPercent - baseDiscountPercent).toFixed(1)),
   };
+}
+
+export function calculateMerchantDiscountPercent(score) {
+  const numericScore = Number(score) || 0;
+  const discountPercent = numericScore === 0 ? 0 : 100 - 100 * (100 / (numericScore + 100));
+  return Number(discountPercent.toFixed(1));
 }
 
 export function calculateArmySetupPoints(stats, skillLevels = {}) {

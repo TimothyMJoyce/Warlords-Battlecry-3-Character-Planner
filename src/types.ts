@@ -100,6 +100,10 @@ export interface AttackSpeedSummary {
 export interface MerchantSummary {
   score: number;
   discountPercent: number;
+  baseScore: number;
+  baseDiscountPercent: number;
+  itemScore: number;
+  itemDiscountDelta: number;
 }
 
 export interface MoraleBreakdown {
@@ -134,6 +138,9 @@ export interface DamageResistances {
   magic: number;
 }
 
+export type StatBreakdowns = Record<string, string[]>;
+export type StatModifierFlags = Record<string, boolean>;
+
 export interface HeroSummary {
   level: number;
   xpForLevel: number;
@@ -167,4 +174,6 @@ export interface HeroSummary {
   conversionRange: number;
   armyLimitBonus: number;
   retinueSlots: number;
+  statBreakdowns: StatBreakdowns;
+  statModifierFlags: StatModifierFlags;
 }

@@ -13,11 +13,16 @@ The desktop setup bundles the dependency-free Node server and planner files into
 
 - `build\WBC3 Planner.exe`: portable Windows launcher built from `tools/desktop/Wbc3PlannerLauncher.cs`.
 - `Build-WBC3-Planner.bat`: builds the portable EXE into `build\`.
-- `tools/build-desktop-exe.ps1`: assembles the bundled payload and builds the launcher EXE with the Windows .NET Framework compiler.
-- `Start-WBC3-Planner.ps1`: starts the local server and opens the app window.
-- `Stop-WBC3-Planner.ps1`: stops a server started by the launcher.
+- `tools/build-desktop-exe.ps1`: assembles the bundled payload and builds `build\WBC3 Planner.exe` with the Windows .NET Framework compiler.
+- `tools/start-desktop.ps1`: starts the built launcher without rebuilding it. Use `-RefreshLocalData` to re-import local data, or `-Stop` to stop a server started by the launcher.
 - `tools/server.mjs`: serves the app and exposes local-only read APIs.
 - `tools/wbc3-paths.mjs`: detects WBC3 install, HeroData, Portraits, and Graphics archives.
+
+## Local Hero Imports
+
+- `src\data\importedHeroBuilds.js` is a committed empty fallback so the app works from a clean checkout.
+- `tools/import-hero-data.mjs` writes personal imports to ignored `src\data\importedHeroBuilds.local.js`.
+- Build scripts remove `importedHeroBuilds.local.js` from `dist\` and the portable payload so local hero data is not bundled by accident.
 
 ## Local API
 

@@ -6,8 +6,9 @@
   "description": "A verified Warlords Battlecry III character build planner.",
   "scripts": {
     "dev": "node tools/server.mjs",
-    "desktop": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\Start-WBC3-Planner.ps1",
-    "desktop:refresh": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\Start-WBC3-Planner.ps1 -RefreshLocalData",
+    "desktop": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\tools\\start-desktop.ps1",
+    "desktop:refresh": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\tools\\start-desktop.ps1 -RefreshLocalData",
+    "desktop:stop": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\tools\\start-desktop.ps1 -Stop",
     "build:desktop": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\tools\\build-desktop-exe.ps1",
     "import:heroes": "node tools/import-hero-data.mjs",
     "extract:portraits": "node tools/extract-portraits.mjs",

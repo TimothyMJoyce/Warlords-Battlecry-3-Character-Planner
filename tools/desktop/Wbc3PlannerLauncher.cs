@@ -4,7 +4,9 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
+using System.Text;
 using System.Threading;
 using System.Windows.Forms;
 
@@ -15,11 +17,13 @@ namespace Wbc3Planner
         [STAThread]
         private static int Main(string[] args)
         {
+            NativeTaskbarIdentity.ApplyToCurrentProcess();
             Application.EnableVisualStyles();
 
             try
             {
                 LauncherOptions options = LauncherOptions.Parse(args);
+                NativeTaskbarIdentity.RepairPinnedTaskbarShortcuts();
                 if (options.ShowHelp)
                 {
                     MessageBox.Show(
@@ -51,6 +55,372 @@ namespace Wbc3Planner
                 MessageBox.Show(error.Message, "WBC3 Planner", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return 1;
             }
+        }
+    }
+
+    internal static class NativeTaskbarIdentity
+    {
+        private const string AppUserModelId = "Codex.WBC3Planner.Desktop";
+        private const string DisplayName = "WBC3 Planner";
+        private const int StgmReadWrite = 2;
+        private static readonly PROPERTYKEY PkeyAppUserModelRelaunchCommand = new PROPERTYKEY(new Guid("9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3"), 2);
+        private static readonly PROPERTYKEY PkeyAppUserModelRelaunchIconResource = new PROPERTYKEY(new Guid("9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3"), 3);
+        private static readonly PROPERTYKEY PkeyAppUserModelRelaunchDisplayNameResource = new PROPERTYKEY(new Guid("9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3"), 4);
+        private static readonly PROPERTYKEY PkeyAppUserModelId = new PROPERTYKEY(new Guid("9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3"), 5);
+
+        public static void ApplyToCurrentProcess()
+        {
+            try
+            {
+                SetCurrentProcessExplicitAppUserModelID(AppUserModelId);
+            }
+            catch
+            {
+            }
+        }
+
+        public static void RepairPinnedTaskbarShortcuts()
+        {
+            string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            if (String.IsNullOrWhiteSpace(appData))
+            {
+                return;
+            }
+
+            string taskbarDirectory = Path.Combine(appData, "Microsoft", "Internet Explorer", "Quick Launch", "User Pinned", "TaskBar");
+            if (!Directory.Exists(taskbarDirectory))
+            {
+                return;
+            }
+
+            string currentExe = CurrentExecutablePath();
+            foreach (string shortcutPath in Directory.GetFiles(taskbarDirectory, "*.lnk"))
+            {
+                RepairPinnedShortcut(shortcutPath, currentExe);
+            }
+        }
+
+        public static void ApplyToPlannerWindow(TimeSpan timeout)
+        {
+            DateTime deadline = DateTime.UtcNow.Add(timeout);
+            while (DateTime.UtcNow < deadline)
+            {
+                if (ApplyToMatchingPlannerWindow())
+                {
+                    return;
+                }
+
+                Thread.Sleep(100);
+            }
+        }
+
+        private static void RepairPinnedShortcut(string shortcutPath, string currentExe)
+        {
+            object shortcut = null;
+            try
+            {
+                shortcut = new CShellLink();
+                System.Runtime.InteropServices.ComTypes.IPersistFile file = (System.Runtime.InteropServices.ComTypes.IPersistFile)shortcut;
+                file.Load(shortcutPath, StgmReadWrite);
+
+                if (!ShortcutTargetsCurrentExecutable((IShellLinkW)shortcut, currentExe))
+                {
+                    return;
+                }
+
+                string iconPath = FindPlannerIconPath(currentExe);
+                ((IShellLinkW)shortcut).SetIconLocation(iconPath, 0);
+                IPropertyStore store = (IPropertyStore)shortcut;
+                SetPlannerProperties(store, currentExe, iconPath);
+                file.Save(shortcutPath, true);
+            }
+            catch
+            {
+            }
+            finally
+            {
+                if (shortcut != null && Marshal.IsComObject(shortcut))
+                {
+                    Marshal.ReleaseComObject(shortcut);
+                }
+            }
+        }
+
+        private static bool ShortcutTargetsCurrentExecutable(IShellLinkW shortcut, string currentExe)
+        {
+            StringBuilder target = new StringBuilder(1024);
+            shortcut.GetPath(target, target.Capacity, IntPtr.Zero, 0);
+            string targetPath = target.ToString();
+            if (String.IsNullOrWhiteSpace(targetPath))
+            {
+                return false;
+            }
+
+            try
+            {
+                return String.Equals(Path.GetFullPath(targetPath), currentExe, StringComparison.OrdinalIgnoreCase);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static bool ApplyToMatchingPlannerWindow()
+        {
+            bool applied = false;
+            EnumWindows(delegate(IntPtr hwnd, IntPtr lParam)
+            {
+                if (!applied && WindowLooksLikePlanner(hwnd))
+                {
+                    applied = ApplyToWindow(hwnd);
+                }
+
+                return true;
+            }, IntPtr.Zero);
+            return applied;
+        }
+
+        private static bool WindowLooksLikePlanner(IntPtr hwnd)
+        {
+            if (!IsWindowVisible(hwnd))
+            {
+                return false;
+            }
+
+            string title = GetWindowTitle(hwnd);
+            if (title.IndexOf("Warlords Battlecry 3 - Character Planner", StringComparison.OrdinalIgnoreCase) < 0 &&
+                title.IndexOf("WBC3 Planner", StringComparison.OrdinalIgnoreCase) < 0)
+            {
+                return false;
+            }
+
+            uint processId;
+            GetWindowThreadProcessId(hwnd, out processId);
+            try
+            {
+                Process process = Process.GetProcessById((int)processId);
+                return process.ProcessName.IndexOf("edge", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    process.ProcessName.IndexOf("webview", StringComparison.OrdinalIgnoreCase) >= 0;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static bool ApplyToWindow(IntPtr hwnd)
+        {
+            IPropertyStore store = null;
+            try
+            {
+                Guid propertyStoreGuid = typeof(IPropertyStore).GUID;
+                int result = SHGetPropertyStoreForWindow(hwnd, ref propertyStoreGuid, out store);
+                if (result != 0 || store == null)
+                {
+                    return false;
+                }
+
+                string currentExe = CurrentExecutablePath();
+                SetPlannerProperties(store, currentExe, FindPlannerIconPath(currentExe));
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+            finally
+            {
+                if (store != null && Marshal.IsComObject(store))
+                {
+                    Marshal.ReleaseComObject(store);
+                }
+            }
+        }
+
+        private static void SetPlannerProperties(IPropertyStore store, string executablePath, string iconPath)
+        {
+            SetStringProperty(store, PkeyAppUserModelId, AppUserModelId);
+            SetStringProperty(store, PkeyAppUserModelRelaunchCommand, QuoteCommand(executablePath));
+            SetStringProperty(store, PkeyAppUserModelRelaunchDisplayNameResource, DisplayName);
+            SetStringProperty(store, PkeyAppUserModelRelaunchIconResource, iconPath + ",0");
+            store.Commit();
+        }
+
+        private static void SetStringProperty(IPropertyStore store, PROPERTYKEY key, string value)
+        {
+            PropVariant propertyValue = PropVariant.FromString(value);
+            try
+            {
+                store.SetValue(ref key, ref propertyValue);
+            }
+            finally
+            {
+                propertyValue.Dispose();
+            }
+        }
+
+        private static string CurrentExecutablePath()
+        {
+            return Path.GetFullPath(Application.ExecutablePath);
+        }
+
+        private static string FindPlannerIconPath(string executablePath)
+        {
+            string exeDirectory = Path.GetDirectoryName(executablePath);
+            string currentDirectory = Directory.GetCurrentDirectory();
+            string iconPath = FirstExistingFile(new string[]
+            {
+                String.IsNullOrWhiteSpace(exeDirectory) ? null : Path.Combine(exeDirectory, "src", "app-assets", "app-icon.ico"),
+                String.IsNullOrWhiteSpace(currentDirectory) ? null : Path.Combine(currentDirectory, "src", "app-assets", "app-icon.ico")
+            });
+
+            return iconPath ?? executablePath;
+        }
+
+        private static string FirstExistingFile(IEnumerable<string> candidates)
+        {
+            foreach (string candidate in candidates)
+            {
+                if (!String.IsNullOrWhiteSpace(candidate) && File.Exists(candidate))
+                {
+                    return Path.GetFullPath(candidate);
+                }
+            }
+
+            return null;
+        }
+
+        private static string QuoteCommand(string value)
+        {
+            return "\"" + value.Replace("\"", "\\\"") + "\"";
+        }
+
+        private static string GetWindowTitle(IntPtr hwnd)
+        {
+            int length = GetWindowTextLength(hwnd);
+            if (length <= 0)
+            {
+                return "";
+            }
+
+            StringBuilder title = new StringBuilder(length + 1);
+            GetWindowText(hwnd, title, title.Capacity);
+            return title.ToString();
+        }
+
+        [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+        private static extern int SetCurrentProcessExplicitAppUserModelID(string appID);
+
+        [DllImport("shell32.dll")]
+        private static extern int SHGetPropertyStoreForWindow(IntPtr hwnd, ref Guid riid, out IPropertyStore propertyStore);
+
+        [DllImport("user32.dll")]
+        private static extern bool EnumWindows(EnumWindowsProc enumFunc, IntPtr lParam);
+
+        [DllImport("user32.dll")]
+        private static extern bool IsWindowVisible(IntPtr hwnd);
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        private static extern int GetWindowText(IntPtr hwnd, StringBuilder text, int maxCount);
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        private static extern int GetWindowTextLength(IntPtr hwnd);
+
+        [DllImport("user32.dll")]
+        private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
+
+        private delegate bool EnumWindowsProc(IntPtr hwnd, IntPtr lParam);
+
+        [ComImport]
+        [Guid("00021401-0000-0000-C000-000000000046")]
+        private class CShellLink
+        {
+        }
+
+        [ComImport]
+        [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        [Guid("000214F9-0000-0000-C000-000000000046")]
+        private interface IShellLinkW
+        {
+            void GetPath([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder file, int maxPath, IntPtr findData, uint flags);
+            void GetIDList(out IntPtr idList);
+            void SetIDList(IntPtr idList);
+            void GetDescription([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder name, int maxName);
+            void SetDescription([MarshalAs(UnmanagedType.LPWStr)] string name);
+            void GetWorkingDirectory([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder directory, int maxPath);
+            void SetWorkingDirectory([MarshalAs(UnmanagedType.LPWStr)] string directory);
+            void GetArguments([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder args, int maxPath);
+            void SetArguments([MarshalAs(UnmanagedType.LPWStr)] string args);
+            void GetHotkey(out short hotkey);
+            void SetHotkey(short hotkey);
+            void GetShowCmd(out int showCommand);
+            void SetShowCmd(int showCommand);
+            void GetIconLocation([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder iconPath, int maxIconPath, out int iconIndex);
+            void SetIconLocation([MarshalAs(UnmanagedType.LPWStr)] string iconPath, int iconIndex);
+            void SetRelativePath([MarshalAs(UnmanagedType.LPWStr)] string path, uint reserved);
+            void Resolve(IntPtr hwnd, uint flags);
+            void SetPath([MarshalAs(UnmanagedType.LPWStr)] string path);
+        }
+
+        [ComImport]
+        [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        [Guid("886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99")]
+        private interface IPropertyStore
+        {
+            [PreserveSig]
+            int GetCount(out uint propertyCount);
+
+            [PreserveSig]
+            int GetAt(uint propertyIndex, out PROPERTYKEY key);
+
+            [PreserveSig]
+            int GetValue(ref PROPERTYKEY key, out PropVariant value);
+
+            [PreserveSig]
+            int SetValue(ref PROPERTYKEY key, ref PropVariant value);
+
+            [PreserveSig]
+            int Commit();
+        }
+
+        [StructLayout(LayoutKind.Sequential, Pack = 4)]
+        private struct PROPERTYKEY
+        {
+            public readonly Guid FormatId;
+            public readonly uint PropertyId;
+
+            public PROPERTYKEY(Guid formatId, uint propertyId)
+            {
+                this.FormatId = formatId;
+                this.PropertyId = propertyId;
+            }
+        }
+
+        [StructLayout(LayoutKind.Explicit)]
+        private struct PropVariant : IDisposable
+        {
+            [FieldOffset(0)]
+            private ushort valueType;
+
+            [FieldOffset(8)]
+            private IntPtr pointerValue;
+
+            public static PropVariant FromString(string value)
+            {
+                PropVariant variant = new PropVariant();
+                variant.valueType = 31;
+                variant.pointerValue = Marshal.StringToCoTaskMemUni(value);
+                return variant;
+            }
+
+            public void Dispose()
+            {
+                PropVariantClear(ref this);
+            }
+
+            [DllImport("ole32.dll")]
+            private static extern int PropVariantClear(ref PropVariant variant);
         }
     }
 
@@ -285,6 +655,7 @@ namespace Wbc3Planner
 
     internal sealed class Launcher
     {
+        private const string EdgeIconCacheVersion = "wbc3-planner-cog-icon-20260504";
         private readonly string root;
         private readonly string bundledNode;
         private readonly string dist;
@@ -625,6 +996,7 @@ namespace Wbc3Planner
                 edgeStart.UseShellExecute = false;
                 edgeStart.WindowStyle = ProcessWindowStyle.Maximized;
                 Process.Start(edgeStart);
+                NativeTaskbarIdentity.ApplyToPlannerWindow(TimeSpan.FromSeconds(6));
                 return;
             }
 
@@ -659,7 +1031,44 @@ namespace Wbc3Planner
 
             string profileDir = Path.Combine(localAppData, "WBC3 Planner", "edge-profile");
             Directory.CreateDirectory(profileDir);
+            ClearEdgeIconCacheIfNeeded(profileDir);
             return profileDir;
+        }
+
+        private static void ClearEdgeIconCacheIfNeeded(string profileDir)
+        {
+            string markerFile = Path.Combine(profileDir, ".app-icon-cache-version");
+            try
+            {
+                if (File.Exists(markerFile) && File.ReadAllText(markerFile).Trim() == EdgeIconCacheVersion)
+                {
+                    return;
+                }
+            }
+            catch
+            {
+            }
+
+            string defaultProfile = Path.Combine(profileDir, "Default");
+            DeleteIfExists(Path.Combine(defaultProfile, "Favicons"));
+            DeleteIfExists(Path.Combine(defaultProfile, "Favicons-journal"));
+            DeleteIfExists(Path.Combine(defaultProfile, "HubApps Icons"));
+            DeleteIfExists(Path.Combine(defaultProfile, "HubApps Icons-journal"));
+            DeleteIfExists(Path.Combine(defaultProfile, "Shortcuts"));
+            DeleteIfExists(Path.Combine(defaultProfile, "Shortcuts-journal"));
+            DeleteDirectoryIfExists(Path.Combine(defaultProfile, "JumpListIconsRecentClosed"));
+            DeleteDirectoryIfExists(Path.Combine(defaultProfile, "JumpListIconsRecentWorkspacesV2"));
+            DeleteDirectoryIfExists(Path.Combine(defaultProfile, "Cache"));
+            DeleteDirectoryIfExists(Path.Combine(defaultProfile, "Code Cache"));
+
+            try
+            {
+                Directory.CreateDirectory(profileDir);
+                File.WriteAllText(markerFile, EdgeIconCacheVersion);
+            }
+            catch
+            {
+            }
         }
 
         private static bool ProcessLooksLikePlannerServer(Process process)
@@ -715,6 +1124,20 @@ namespace Wbc3Planner
                 if (File.Exists(path))
                 {
                     File.Delete(path);
+                }
+            }
+            catch
+            {
+            }
+        }
+
+        private static void DeleteDirectoryIfExists(string path)
+        {
+            try
+            {
+                if (Directory.Exists(path))
+                {
+                    Directory.Delete(path, true);
                 }
             }
             catch

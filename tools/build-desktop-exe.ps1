@@ -13,7 +13,7 @@ $PayloadRoot = Join-Path $BuildRoot "portable-payload"
 $PayloadZip = Join-Path $BuildRoot "planner-payload.zip"
 
 if ([string]::IsNullOrWhiteSpace($OutPath)) {
-  $OutPath = Join-Path $Root "WBC3 Planner.exe"
+  $OutPath = Join-Path $BuildRoot "WBC3 Planner.exe"
 }
 
 if ([string]::IsNullOrWhiteSpace($IconPath)) {
@@ -140,6 +140,11 @@ Copy-RequiredPath "tools\import-hero-data.mjs"
 Copy-RequiredPath "tools\extract-portraits.mjs"
 Copy-RequiredPath "tools\extract-ui-icons.mjs"
 Copy-OptionalPath "src\assets"
+
+$LocalHeroImportModule = Join-Path $PayloadRoot "src\data\importedHeroBuilds.local.js"
+if (Test-Path -LiteralPath $LocalHeroImportModule) {
+  Remove-Item -LiteralPath $LocalHeroImportModule -Force
+}
 
 $BundledNode = Find-NodeRuntime
 $RuntimeDir = Join-Path $PayloadRoot "runtime"

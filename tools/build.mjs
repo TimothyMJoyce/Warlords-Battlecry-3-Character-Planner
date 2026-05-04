@@ -21,6 +21,7 @@ for (const path of ["index.html", "manifest.webmanifest", "src/app.js", "src/sty
 }
 
 await copyOptional("src/assets");
+await rm(resolve(dist, "src/data/importedHeroBuilds.local.js"), { force: true });
 
 console.log(`Built static planner at ${dist}`);
 

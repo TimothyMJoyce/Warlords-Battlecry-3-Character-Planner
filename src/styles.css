@@ -1355,6 +1355,13 @@ output {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--modifier) 32%, transparent);
 }
 
+.defense-stack {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 8px;
+  min-width: 0;
+}
+
 .defense-group {
   display: grid;
   gap: 8px;

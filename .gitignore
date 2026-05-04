@@ -2,10 +2,12 @@
 dist/
 build/
 WBC3 Planner.exe
+src/assets/
 
 # Local/runtime noise
 *.log
 server-url.txt
+src/data/importedHeroBuilds.local.js
 .DS_Store
 Thumbs.db
 node_modules/

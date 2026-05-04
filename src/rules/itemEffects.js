@@ -245,13 +245,16 @@ function addSkillBonus(effects, power, source, text) {
 
 function addTotal(effects, totalKey, breakdownKey, amount, source, text) {
   effects.totals[totalKey] += amount;
-  addBreakdown(effects, breakdownKey, source, text);
+  addBreakdown(effects, breakdownKey, source, text, amount);
 }
 
-function addBreakdown(effects, key, source, text) {
+function addBreakdown(effects, key, source, text, amount = null) {
   if (!key || !text) return;
   if (!effects.breakdowns[key]) effects.breakdowns[key] = [];
-  effects.breakdowns[key].push({ source, text });
+  const entry = { source, text };
+  const numericAmount = Number(amount);
+  if (Number.isFinite(numericAmount)) entry.amount = numericAmount;
+  effects.breakdowns[key].push(entry);
 }
 
 function normalizePowerType(type) {

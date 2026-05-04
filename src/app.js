@@ -47,6 +47,7 @@ const savedBuildStorageKey = "wbc3-character-planner.savedBuilds.v1";
 const rulesetStorageKey = "wbc3-character-planner.ruleset.v1";
 const draftStorageKey = "wbc3-character-planner.drafts.v1";
 const themeStorageKey = "wbc3-character-planner.theme.v1";
+const localImportedHeroBuildsModulePath = "./data/importedHeroBuilds.local.js";
 const itemLevelFilters = [
   { id: "all", label: "All" },
   { id: "artifact", label: "Artifact" },
@@ -346,17 +347,19 @@ function render() {
                 { label: "Conversion Time", value: `${summary.conversionTime}s`, tooltip: statBreakdown(summary, "conversionTime") },
               ])}
             `)}
-            ${defenseGroup("Armor", summary.armor, [
-              ["Piercing", summary.damageResistances.piercing, "Piercing", statBreakdown(summary, "piercing")],
-              ["Slashing", summary.damageResistances.slashing, "Slashing", statBreakdown(summary, "slashing")],
-              ["Crushing", summary.damageResistances.crushing, "Crushing", statBreakdown(summary, "crushing")],
-            ], summaryIconKeys.Armor, statBreakdown(summary, "armor"))}
-            ${defenseGroup("Resistance", summary.resistance, [
-              ["Fire", summary.damageResistances.fire, "fire", statBreakdown(summary, "fire")],
-              ["Cold", summary.damageResistances.cold, "cold", statBreakdown(summary, "cold")],
-              ["Electricity", summary.damageResistances.electricity, "electricity", statBreakdown(summary, "electricity")],
-              ["Magic", summary.damageResistances.magic, "magic", statBreakdown(summary, "magic")],
-            ], summaryIconKeys.Resistance, statBreakdown(summary, "resistance"))}
+            <div class="defense-stack">
+              ${defenseGroup("Armor", summary.armor, [
+                ["Piercing", summary.damageResistances.piercing, "Piercing", statBreakdown(summary, "piercing")],
+                ["Slashing", summary.damageResistances.slashing, "Slashing", statBreakdown(summary, "slashing")],
+                ["Crushing", summary.damageResistances.crushing, "Crushing", statBreakdown(summary, "crushing")],
+              ], summaryIconKeys.Armor, statBreakdown(summary, "armor"))}
+              ${defenseGroup("Resistance", summary.resistance, [
+                ["Fire", summary.damageResistances.fire, "fire", statBreakdown(summary, "fire")],
+                ["Cold", summary.damageResistances.cold, "cold", statBreakdown(summary, "cold")],
+                ["Electricity", summary.damageResistances.electricity, "electricity", statBreakdown(summary, "electricity")],
+                ["Magic", summary.damageResistances.magic, "magic", statBreakdown(summary, "magic")],
+              ], summaryIconKeys.Resistance, statBreakdown(summary, "resistance"))}
+            </div>
           </div>
         </section>
 
@@ -2536,22 +2539,84 @@ const statBreakdownLabels = {
 };
 
 function statBreakdown(summary, ...keys) {
-  const rows = [];
+  const calculationRows = [];
+  const itemRows = [];
+  const statBreakdowns = summary.statBreakdowns ?? {};
   const itemBreakdowns = summary.itemBreakdowns ?? {};
   const groups = keys
-    .map((key) => ({ key, entries: Array.isArray(itemBreakdowns[key]) ? itemBreakdowns[key] : [] }))
-    .filter((group) => group.entries.length);
+    .map((key) => ({
+      key,
+      calculations: Array.isArray(statBreakdowns[key]) ? statBreakdowns[key] : [],
+      entries: Array.isArray(itemBreakdowns[key]) ? itemBreakdowns[key] : [],
+    }))
+    .filter((group) => (group.calculations.length || group.entries.length) && hasStatModifier(summary, group.key, group.entries));
   const showLabels = groups.length > 1;
 
-  for (const { key, entries } of groups) {
-    for (const entry of entries) {
-      const source = entry.source ? `${entry.source}: ` : "";
+  for (const { key, calculations } of groups) {
+    for (const row of calculations) {
       const prefix = showLabels ? `${statBreakdownLabels[key] ?? key}: ` : "";
-      rows.push(`${prefix}${source}${entry.text}`);
+      calculationRows.push(`${prefix}${row}`);
     }
   }
 
-  return rows.length ? `Item modifiers:\n${dedupeRows(rows).join("\n")}` : "";
+  for (const { key, entries } of groups) {
+    if (key === "merchant") {
+      itemRows.push(...merchantItemBreakdown(summary, entries, showLabels));
+      continue;
+    }
+
+    for (const entry of entries) {
+      const source = entry.source ? `${entry.source}: ` : "";
+      const prefix = showLabels ? `${statBreakdownLabels[key] ?? key}: ` : "";
+      itemRows.push(`${prefix}${source}${entry.text}`);
+    }
+  }
+
+  const sections = [];
+  if (calculationRows.length) sections.push(`Calculation:\n${dedupeRows(calculationRows).join("\n")}`);
+  if (itemRows.length) sections.push(`Item modifiers:\n${dedupeRows(itemRows).join("\n")}`);
+  return sections.join("\n\n");
+}
+
+function hasStatModifier(summary, key, entries = []) {
+  return entries.length > 0 || summary.statModifierFlags?.[key] === true;
+}
+
+function merchantItemBreakdown(summary, entries, showLabels = false) {
+  if (!entries.length) return [];
+
+  const rows = [];
+  const prefix = showLabels ? "Merchant: " : "";
+  const merchant = summary.merchant ?? {};
+  const baseScore = Number.isFinite(Number(merchant.baseScore))
+    ? Number(merchant.baseScore)
+    : (Number(merchant.score) || 0) - entries.reduce((total, entry) => total + (Number(entry.amount) || 0), 0);
+  let runningScore = baseScore;
+
+  for (const entry of entries) {
+    const amount = Number(entry.amount);
+    const source = entry.source ? `${entry.source}: ` : "";
+    if (!Number.isFinite(amount)) {
+      rows.push(`${prefix}${source}${entry.text}`);
+      continue;
+    }
+
+    const beforeDiscount = calculateMerchantDiscountPercent(runningScore);
+    runningScore += amount;
+    const afterDiscount = calculateMerchantDiscountPercent(runningScore);
+    const delta = afterDiscount - beforeDiscount;
+    rows.push(
+      `${prefix}${source}${formatSignedValue(amount)} Merchant score; final discount changes by ${formatPercentagePointDelta(delta)} (${formatMerchantPercent(beforeDiscount)} to ${formatMerchantPercent(afterDiscount)})`,
+    );
+  }
+
+  const finalScore = Number.isFinite(Number(merchant.score)) ? Number(merchant.score) : runningScore;
+  const finalDiscount = Number.isFinite(Number(merchant.discountPercent))
+    ? Number(merchant.discountPercent)
+    : calculateMerchantDiscountPercent(finalScore);
+  rows.push(`${prefix}Final merchant total: ${finalScore} (${formatMerchantPercent(finalDiscount)})`);
+
+  return rows;
 }
 
 function skillItemBreakdown(summary, skillId) {
@@ -2579,7 +2644,7 @@ function summaryItem(label, value, options = {}, iconKeyOverride = summaryIconKe
   const tooltip = settings.tooltip ?? "";
   const secondary = settings.secondary ?? "";
   const iconKey = settings.iconKey ?? summaryIconKeys[label];
-  const tooltipMarkup = tooltip ? summaryTooltip(`${label} item modifiers`, tooltip) : "";
+  const tooltipMarkup = tooltip ? summaryTooltip(`${label} details`, tooltip) : "";
   const secondaryMarkup = secondary ? `<small class="summary-subvalue">${escapeHtml(secondary)}</small>` : "";
   return `
     <div class="summary-item ${tooltip ? "has-tooltip" : ""}">
@@ -2613,7 +2678,7 @@ function derivedStatGroup(rows) {
 }
 
 function derivedStatRow({ label, value, secondary = "", tooltip = "", iconKey = summaryIconKeys[label] }) {
-  const tooltipMarkup = tooltip ? summaryTooltip(`${label} item modifiers`, tooltip) : "";
+  const tooltipMarkup = tooltip ? summaryTooltip(`${label} details`, tooltip) : "";
   const secondaryMarkup = secondary ? `<small class="summary-subvalue">${escapeHtml(secondary)}</small>` : "";
   return `
     <div class="derived-stat-row ${tooltip ? "has-tooltip" : ""}">
@@ -2634,7 +2699,7 @@ function defenseGroup(label, value, items, iconKey = summaryIconKeys[label], too
         <span class="summary-label">${iconMarkup(iconKey)}${escapeHtml(label)}</span>
         <span class="defense-value">
           <strong>${escapeHtml(value)}</strong>
-          ${tooltip ? summaryTooltip(`${label} item modifiers`, tooltip) : ""}
+          ${tooltip ? summaryTooltip(`${label} details`, tooltip) : ""}
         </span>
       </div>
       <div class="defense-sublist">
@@ -2643,7 +2708,7 @@ function defenseGroup(label, value, items, iconKey = summaryIconKeys[label], too
             <span class="summary-label">${iconMarkup(itemIconKey)}${escapeHtml(itemLabel)}</span>
             <span class="defense-value">
               <strong>${escapeHtml(itemValue)}</strong>
-              ${itemTooltip ? summaryTooltip(`${itemLabel} item modifiers`, itemTooltip) : ""}
+              ${itemTooltip ? summaryTooltip(`${itemLabel} details`, itemTooltip) : ""}
             </span>
           </div>
         `).join("")}
@@ -2663,7 +2728,7 @@ function moraleEffectsSection(summary, race) {
           ${moraleRaceSwitcher(summary, race)}
           <span class="morale-value">
             <strong>${escapeHtml(selectedView.morale)}</strong>
-            ${tooltip ? summaryTooltip("Morale item modifiers", tooltip) : ""}
+            ${tooltip ? summaryTooltip("Morale details", tooltip) : ""}
           </span>
         </span>
       </div>
@@ -2747,7 +2812,7 @@ function moraleEffectRow(label, value, tooltip = "") {
       <span>${escapeHtml(label)}</span>
       <span class="morale-value">
         <strong>${escapeHtml(value)}</strong>
-        ${tooltip ? summaryTooltip(`${label} item modifiers`, tooltip) : ""}
+        ${tooltip ? summaryTooltip(`${label} details`, tooltip) : ""}
       </span>
     </div>
   `;
@@ -2767,7 +2832,8 @@ function getSortedHeroClasses() {
 }
 
 function iconMarkup(iconKey) {
-  const icon = statIcons[iconKey];
+  const normalizedIconKey = summaryIconKeys[iconKey] ?? iconKey;
+  const icon = statIcons[normalizedIconKey];
   if (!icon) return "";
   return `<img class="stat-icon" src="${icon.src}" alt="" aria-hidden="true" />`;
 }
@@ -2900,6 +2966,25 @@ function formatMerchant(value) {
   if (percent > 0) return `${value.score} (${percent.toFixed(1)}% discount)`;
   if (percent < 0) return `${value.score} (${Math.abs(percent).toFixed(1)}% markup)`;
   return String(value.score);
+}
+
+function formatMerchantPercent(value) {
+  const percent = Number(value) || 0;
+  if (percent > 0) return `${percent.toFixed(1)}% discount`;
+  if (percent < 0) return `${Math.abs(percent).toFixed(1)}% markup`;
+  return "0.0%";
+}
+
+function formatPercentagePointDelta(value) {
+  const points = Number(value) || 0;
+  const sign = points >= 0 ? "+" : "";
+  return `${sign}${points.toFixed(1)} percentage points`;
+}
+
+function calculateMerchantDiscountPercent(score) {
+  const numericScore = Number(score) || 0;
+  const discountPercent = numericScore === 0 ? 0 : 100 - 100 * (100 / (numericScore + 100));
+  return Number(discountPercent.toFixed(1));
 }
 
 function formatSignedValue(value) {
@@ -3084,6 +3169,7 @@ function escapeHtml(value) {
 window.addEventListener("keydown", handleHeroPreviewDirectionKeydown);
 
 render();
+loadLocalImportedHeroBuilds();
 loadLocalPathStatus();
 loadLocalHeroBuilds();
 loadLocalItems();
@@ -3120,6 +3206,21 @@ async function loadLocalHeroBuilds() {
     mergeImportedHeroBuilds(body.builds, body.metadata);
   } catch {
     // Static web hosting does not provide the local desktop API.
+  }
+}
+
+async function loadLocalImportedHeroBuilds() {
+  try {
+    const response = await fetch(localImportedHeroBuildsModulePath, { cache: "no-store" });
+    if (!response.ok) return;
+
+    const localModule = await import(`${localImportedHeroBuildsModulePath}?v=${Date.now()}`);
+    if (!Array.isArray(localModule.importedHeroBuilds)) return;
+
+    localHeroImportError = "";
+    mergeImportedHeroBuilds(localModule.importedHeroBuilds, localModule.importedHeroBuildMetadata);
+  } catch {
+    // Most checkouts do not have local imported hero data, and that is expected.
   }
 }
 

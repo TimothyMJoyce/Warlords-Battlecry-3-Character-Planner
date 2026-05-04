@@ -47,6 +47,7 @@ const mimeTypes = {
   ".json": "application/json; charset=utf-8",
   ".bmp": "image/bmp",
   ".png": "image/png",
+  ".ico": "image/x-icon",
 };
 
 const server = createServer(async (request, response) => {
