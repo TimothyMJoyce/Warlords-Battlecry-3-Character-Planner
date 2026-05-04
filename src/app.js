@@ -94,6 +94,7 @@ let localSkillMagicTemplates = {};
 let localSkillTextError = "";
 let itemSearchQuery = "";
 let itemLevelFilter = "all";
+let itemSlotFilter = "all";
 let itemSearchPage = 0;
 let tooltipDismissHandlersBound = false;
 let previewAnimationId = DEFAULT_HERO_ANIMATION_ID;
@@ -159,21 +160,18 @@ const equipmentSlots = [
   { id: "ring2", label: "Ring", accepts: [5, 10] },
   { id: "boots", label: "Boots", accepts: [9] },
 ];
+const itemSlotFilters = [
+  { id: "all", label: "All Slots", accepts: [] },
+  ...equipmentSlots
+    .filter((slot) => slot.id !== "ring2")
+    .map((slot) => ({
+      id: slot.id === "ring1" ? "ring" : slot.id,
+      label: slot.label,
+      accepts: slot.accepts,
+    })),
+];
 
 const equipmentSlotsById = Object.fromEntries(equipmentSlots.map((slot) => [slot.id, slot]));
-const equipmentTypeLabels = {
-  0: "Sword",
-  1: "Staff",
-  2: "Armor",
-  3: "Necklace",
-  4: "Shield",
-  5: "Ring",
-  6: "Crown",
-  7: "Helm",
-  8: "Banner",
-  9: "Boots",
-  10: "Orb",
-};
 
 rulesetDrafts = loadRulesetDrafts();
 build = rulesetDrafts.get(activeRulesetId) ?? createDefaultBuild(activeRulesetId);
@@ -368,6 +366,7 @@ function render() {
               ${derivedStatGroup([
                 { label: "Merchant", value: formatMerchant(summary.merchant), tooltip: statBreakdown(summary, "merchant") },
                 { label: "Command Radius", value: summary.commandRadius, tooltip: statBreakdown(summary, "commandRadius") },
+                { label: "Army Setup Points", value: formatSignedValue(summary.armySetupPoints), tooltip: statBreakdown(summary, "armySetupPoints") },
               ])}
             `)}
           </div>
@@ -501,6 +500,14 @@ function bindEvents() {
   document.querySelectorAll("[data-item-filter]").forEach((button) => {
     button.addEventListener("click", () => {
       itemLevelFilter = normalizeItemLevelFilter(button.dataset.itemFilter);
+      itemSearchPage = 0;
+      render();
+    });
+  });
+
+  document.querySelectorAll("[data-item-slot-filter]").forEach((button) => {
+    button.addEventListener("click", () => {
+      itemSlotFilter = normalizeItemSlotFilter(button.dataset.itemSlotFilter);
       itemSearchPage = 0;
       render();
     });
@@ -1310,11 +1317,16 @@ function itemsPanel() {
           ${equipmentSlots.map((slot) => equipmentSlot(slot, equippedItems[slot.id])).join("")}
         </div>
         <div class="item-search-panel">
-          <label class="field">
-            <span>Search Items</span>
-            <input id="item-search-input" type="search" value="${escapeHtml(itemSearchQuery)}" placeholder="Search by name, slot, or effect" autocomplete="off" />
-          </label>
-          ${itemFilterButtons()}
+          <div class="item-search-controls">
+            <label class="field item-search-field">
+              <span>Search Items</span>
+              <input id="item-search-input" type="search" value="${escapeHtml(itemSearchQuery)}" placeholder="Search by name or effect" autocomplete="off" />
+            </label>
+            <div class="item-filter-groups">
+              ${itemFilterButtons()}
+              ${itemSlotFilterButtons()}
+            </div>
+          </div>
           <div class="item-search-results">
             ${itemSearchResults(searchPage.items)}
           </div>
@@ -1337,6 +1349,30 @@ function itemFilterButtons() {
               type="button"
               class="item-filter-button ${active ? "is-active" : ""}"
               data-item-filter="${escapeHtml(option.id)}"
+              aria-pressed="${active ? "true" : "false"}"
+            >
+              <span>${escapeHtml(option.label)}</span>
+              <strong>${counts[option.id] ?? 0}</strong>
+            </button>
+          `;
+        })
+        .join("")}
+    </div>
+  `;
+}
+
+function itemSlotFilterButtons() {
+  const counts = getItemSlotFilterCounts();
+  return `
+    <div class="item-filter-bar item-slot-filter-bar" role="group" aria-label="Item slot filter">
+      ${itemSlotFilters
+        .map((option) => {
+          const active = itemSlotFilter === option.id;
+          return `
+            <button
+              type="button"
+              class="item-filter-button item-slot-filter-button ${active ? "is-active" : ""}"
+              data-item-slot-filter="${escapeHtml(option.id)}"
               aria-pressed="${active ? "true" : "false"}"
             >
               <span>${escapeHtml(option.label)}</span>
@@ -1380,11 +1416,12 @@ function equipmentSlot(slot, itemId) {
   const item = getLocalItemById(itemId);
   const stateClass = item ? "is-equipped" : "is-empty";
   const title = item ? `${item.name}: ${formatItemEffect(item)}` : slot.label;
+  const itemEffect = item ? `<small>${escapeHtml(formatItemEffect(item))}</small>` : "";
   return `
     <button type="button" class="equipment-slot equipment-slot-${slot.id} ${stateClass}" data-clear-item-slot="${escapeHtml(slot.id)}" title="${escapeHtml(title)}">
       <span>${escapeHtml(slot.label)}</span>
       <strong>${escapeHtml(item?.name ?? "Empty")}</strong>
-      <small>${item ? escapeHtml(formatItemEffect(item)) : escapeHtml(formatSlotAccepts(slot))}</small>
+      ${itemEffect}
     </button>
   `;
 }
@@ -1453,11 +1490,9 @@ function getFilteredItemSearchResults() {
   const query = itemSearchQuery.trim().toLowerCase();
   return localItemCatalog.filter((item) => {
     if (!matchesItemLevelFilter(item)) return false;
+    if (!matchesItemSlotFilter(item)) return false;
     if (!query) return true;
-    return [item.name, item.typeLabel, item.powerLabel, formatItemEffect(item), item.description]
-      .join(" ")
-      .toLowerCase()
-      .includes(query);
+    return getItemSearchText(item).includes(query);
   });
 }
 
@@ -1473,8 +1508,10 @@ function clampItemSearchPage(page, pageCount) {
 }
 
 function getItemFilterCounts() {
-  const counts = { all: localItemCatalog.length, artifact: 0, set: 0 };
+  const counts = { all: 0, artifact: 0, set: 0 };
   localItemCatalog.forEach((item) => {
+    if (!matchesItemSlotFilter(item)) return;
+    counts.all += 1;
     const filter = getItemFilterId(item);
     if (filter === "artifact" || filter === "set") {
       counts[filter] += 1;
@@ -1483,9 +1520,58 @@ function getItemFilterCounts() {
   return counts;
 }
 
+function getItemSlotFilterCounts() {
+  const counts = Object.fromEntries(itemSlotFilters.map((option) => [option.id, 0]));
+  localItemCatalog.forEach((item) => {
+    if (!matchesItemLevelFilter(item)) return;
+    counts.all += 1;
+    const itemType = Number(item?.type);
+    itemSlotFilters.forEach((option) => {
+      if (option.id === "all" || !option.accepts.includes(itemType)) return;
+      counts[option.id] += 1;
+    });
+  });
+  return counts;
+}
+
 function matchesItemLevelFilter(item) {
   if (itemLevelFilter === "all") return true;
   return getItemFilterId(item) === itemLevelFilter;
+}
+
+function getItemSlotFilter(filterId) {
+  const id = normalizeItemSlotFilter(filterId);
+  return itemSlotFilters.find((option) => option.id === id) ?? itemSlotFilters[0];
+}
+
+function matchesItemSlotFilter(item) {
+  const filter = getItemSlotFilter(itemSlotFilter);
+  if (filter.id === "all") return true;
+  return filter.accepts.includes(Number(item?.type));
+}
+
+function normalizeItemSlotFilter(value) {
+  const filter = String(value ?? "").toLowerCase();
+  return itemSlotFilters.some((option) => option.id === filter) ? filter : "all";
+}
+
+function getItemSlotLabelForItem(item) {
+  const itemType = Number(item?.type);
+  const filter = itemSlotFilters.find((option) => option.id !== "all" && option.accepts.includes(itemType));
+  return filter?.label ?? "";
+}
+
+function getItemSearchText(item) {
+  return [
+    item.name,
+    item.typeLabel,
+    getItemSlotLabelForItem(item),
+    item.powerLabel,
+    formatItemEffect(item),
+    item.description,
+  ]
+    .join(" ")
+    .toLowerCase();
 }
 
 function getItemFilterId(item) {
@@ -1563,13 +1649,6 @@ function formatItemPower(power) {
   if (Number.isInteger(power.level)) details.push(`level ${power.level}`);
   const suffix = details.length ? ` (${details.join(", ")})` : "";
   return `${sign}${power.data} ${power.typeLabel}${suffix}`;
-}
-
-function formatSlotAccepts(slot) {
-  return slot.accepts
-    .map((type) => equipmentTypeLabels[type] ?? `Type ${type}`)
-    .filter(Boolean)
-    .join(" / ") || "No item equipped";
 }
 
 function heroPreviewPanel(summary, race, heroClass, avatarId) {
@@ -2422,6 +2501,7 @@ function derivedStatsSection(title, content) {
 
 const statBreakdownLabels = {
   armor: "Armor",
+  armySetupPoints: "Army Setup Points",
   attackSpeed: "Attack Speed",
   cold: "Cold",
   combat: "Combat",

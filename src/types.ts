@@ -134,6 +134,7 @@ export interface HeroSummary {
   initialTroopXp: number;
   morale: number;
   merchant: MerchantSummary;
+  armySetupPoints: number;
   commandRadius: number;
   command: number;
   groupLimit: number;

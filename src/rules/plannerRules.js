@@ -262,6 +262,7 @@ export function calculateHeroSummary(build) {
   const armyLimitBonus = calculateArmyLimitBonus(morale);
   const unitAttackSpeed = calculateUnitAttackSpeed(morale);
   const merchant = calculateMerchant(stats, skillLevels, itemEffects);
+  const armySetupPoints = calculateArmySetupPoints(stats, skillLevels);
   const command = calculateCommand(stats, itemEffects);
   const commandRadius = getEffectiveCommandRadius(calculateCommandRadius(stats) + itemTotal(itemEffects, "command"));
   const groupLimit = getGroupLimitFromCommand(command);
@@ -297,6 +298,7 @@ export function calculateHeroSummary(build) {
     commandEffect,
     unitAttackSpeed,
     merchant,
+    armySetupPoints,
     commandRadius,
     command,
     groupLimit,
@@ -362,6 +364,7 @@ const itemSkillBreakdownTargets = {
   regeneration: [{ key: "lifeRegen", label: "Life Regen", format: formatSignedPercent }],
   energy: [{ key: "manaRegen", label: "Mana Regen", format: formatSignedPercent }],
   merchant: [{ key: "merchant", label: "Merchant" }],
+  diplomacy: [{ key: "armySetupPoints", label: "Army Setup Points" }],
   leadership: [{ key: "morale", label: "Morale" }],
 };
 
@@ -667,6 +670,10 @@ export function calculateMerchant(stats, skillLevels = {}, itemEffects = {}) {
     score,
     discountPercent: Number(discountPercent.toFixed(1)),
   };
+}
+
+export function calculateArmySetupPoints(stats, skillLevels = {}) {
+  return bonus(stats, "retinue") + skillEffect("diplomacy", skillLevels.diplomacy);
 }
 
 export function calculateCommand(stats, itemEffects = {}) {

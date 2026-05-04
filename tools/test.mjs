@@ -34,6 +34,7 @@ import { buildSkillTextCatalog, parseGameText, readSkillTextCatalog } from "./wb
 import {
   calculateAttackSpeed,
   calculateArmyLimitBonus,
+  calculateArmySetupPoints,
   calculateCommandEffect,
   calculateConditionalSkillEffects,
   calculateDamageResistances,
@@ -231,6 +232,13 @@ assert.match(appSource, /power\.displayText/);
 assert.match(appSource, /data-item-filter/);
 assert.match(appSource, /itemLevelFilter/);
 assert.match(appSource, /normalizeItemLevelFilter/);
+assert.match(appSource, /data-item-slot-filter/);
+assert.match(appSource, /itemSlotFilter/);
+assert.match(appSource, /normalizeItemSlotFilter/);
+assert.match(appSource, /matchesItemSlotFilter/);
+assert.match(appSource, /All Slots/);
+assert.match(appSource, /Off Hand/);
+assert.doesNotMatch(appSource, /formatSlotAccepts/);
 assert.match(appSource, /data-item-page-delta/);
 assert.match(appSource, /itemSearchPageSize/);
 assert.match(appSource, /getVisibleItemSearchPage/);
@@ -334,6 +342,7 @@ assert.deepEqual(summary.merchant, {
   score: -1,
   discountPercent: -1,
 });
+assert.equal(summary.armySetupPoints, 1);
 assert.equal(summary.commandRadius, 7);
 assert.equal(summary.command, 9);
 assert.equal(summary.groupLimit, 11);
@@ -502,6 +511,7 @@ assert.equal(calculateCommandEffect(3), 3);
 assert.equal(calculateCommandEffect(10), 10);
 assert.equal(calculateArmyLimitBonus(3), 1);
 assert.equal(calculateArmyLimitBonus(10), 5);
+assert.equal(calculateArmySetupPoints({ strength: 0, dexterity: 0, intelligence: 0, charisma: 15 }, { diplomacy: 4 }), 7);
 assert.deepEqual(calculateUnitAttackSpeed(3), {
   periodMs: 1470,
   seconds: 1.47,
