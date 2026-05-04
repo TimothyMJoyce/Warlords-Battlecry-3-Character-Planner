@@ -127,15 +127,18 @@ async function tryReadItemTextCatalog(gameDir, graphicsPath = "") {
     const textContext = await readItemTextContext(gameDir);
     const graphicsAssets = await readItemGraphicsAssets(gameDir, graphicsPath);
     const items = catalog.items.map((item) => enrichItem(item, textContext, graphicsAssets.iconSheet));
+    const sets = catalog.sets.map((set) => enrichItemSet(set, textContext));
     return {
       ok: true,
       available: true,
       items,
+      sets,
       shineSprites: graphicsAssets.shineSprites,
       metadata: {
         archive: "Items.xcr",
         resource: "Items.xml",
         itemCount: items.length,
+        setCount: sets.length,
       },
     };
   } catch {
@@ -192,6 +195,21 @@ function enrichItem(item, textContext, iconSheet) {
       width: itemIconWidth,
       height: itemIconHeight,
     },
+  };
+}
+
+function enrichItemSet(set, textContext) {
+  const power = set.power
+    ? {
+        ...set.power,
+        displayText: formatItemPowerText(set.power, textContext),
+      }
+    : null;
+
+  return {
+    ...set,
+    power,
+    effectText: power?.displayText ?? "",
   };
 }
 
@@ -420,7 +438,39 @@ export function parseItemXml(text) {
     });
   }
 
-  return { items };
+  return { items, sets: parseItemSets(text) };
+}
+
+function parseItemSets(text) {
+  const sets = [];
+  const setPattern = /<Set\b([^>]*)>([\s\S]*?)<\/Set>/gi;
+  let setMatch;
+
+  while ((setMatch = setPattern.exec(String(text ?? "")))) {
+    const setAttributes = parseXmlAttributes(setMatch[1]);
+    const body = setMatch[2] ?? "";
+    const numericId = toInteger(setAttributes.id, sets.length);
+    const powers = parseItemPowers(body);
+    const itemIds = [];
+    const itemPattern = /<Item\b([^/>]*?)\/>/gi;
+    let itemMatch;
+
+    while ((itemMatch = itemPattern.exec(body))) {
+      const itemAttributes = parseXmlAttributes(itemMatch[1]);
+      const itemId = toInteger(itemAttributes.id, null);
+      if (Number.isInteger(itemId)) itemIds.push(itemId);
+    }
+
+    sets.push({
+      id: `set-${numericId}`,
+      numericId,
+      name: extractXmlTagText(body, "Name") || `Set ${numericId}`,
+      items: itemIds,
+      power: powers[0] ?? null,
+    });
+  }
+
+  return sets;
 }
 
 function parseItemPowers(body) {
@@ -530,5 +580,5 @@ export function parseItemConfig(text) {
     });
   }
 
-  return { items };
+  return { items, sets: [] };
 }

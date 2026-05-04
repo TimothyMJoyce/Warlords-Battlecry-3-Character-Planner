@@ -7,6 +7,7 @@ import {
   racesById,
   skillsById,
 } from "../data/gameData.js";
+import { applyItemSkillBonuses, calculateEquippedItemEffects } from "./itemEffects.js";
 
 export const emptyStats = () => ({
   strength: 0,
@@ -216,11 +217,20 @@ export function calculateHeroSummary(build) {
   const level = clampLevel(build.level);
   const heroClass = getHeroClass(build.classId);
   const stats = calculatePrimaryStats(build);
-  const skillLevels = getSkillLevels(build);
+  const baseSkillLevels = getSkillLevels(build);
+  const itemEffects = calculateEquippedItemEffects(build);
+  const skillLevels = applyItemSkillBonuses(baseSkillLevels, itemEffects);
+  const itemBreakdowns = buildItemBreakdowns(itemEffects, baseSkillLevels);
 
-  const combat = bonus(stats, "combat") + skillEffect("ferocity", skillLevels.ferocity);
-  const speed = bonus(stats, "speed") + skillEffect("running", skillLevels.running);
-  const attackSpeed = calculateAttackSpeed(stats, skillLevels);
+  const combat = bonus(stats, "combat") + skillEffect("ferocity", skillLevels.ferocity) + itemTotal(itemEffects, "combat");
+  const speed =
+    bonus(stats, "speed") +
+    skillEffect("running", skillLevels.running) +
+    itemTotal(itemEffects, "speed") +
+    itemTotal(itemEffects, "speedAll") -
+    itemTotal(itemEffects, "slow") -
+    itemTotal(itemEffects, "slowAll");
+  const attackSpeed = calculateAttackSpeed(stats, baseSkillLevels, itemEffects);
   const life =
     heroClass.baseLife +
     (level - 1) * heroClass.lifePerLevel +
@@ -230,37 +240,44 @@ export function calculateHeroSummary(build) {
     heroClass.baseMana +
     bonus(stats, "mana") +
     skillEffect("lore", skillLevels.lore);
-  const damage = 10 + bonus(stats, "damage");
+  const fireMissileActive = hasSkill(baseSkillLevels, "fireMissile");
+  const rawDamageAdd = skillEffect("mightyBlow", skillLevels.mightyBlow) + itemTotal(itemEffects, "weaponDamage");
+  const damage = 10 + bonus(stats, "damage") + (fireMissileActive ? Math.trunc(rawDamageAdd / 3) : rawDamageAdd);
   const armor =
     heroClass.baseArmor +
     bonus(stats, "armor") +
-    skillEffect("invulnerability", skillLevels.invulnerability);
-  const resistance = calculateResistance(heroClass, stats, skillLevels);
-  const damageResistances = calculateDamageResistances(resistance, armor, skillLevels);
-  const lifeRegen = calculateLifeRegen(stats, skillLevels);
-  const manaRegen = calculateManaRegen(stats, skillLevels);
-  const spellcasting = bonus(stats, "spellcasting") + skillEffect("ritual", skillLevels.ritual);
-  const initialTroopXp = bonus(stats, "initialTroopXp");
-  const morale = calculateMorale(build.raceId, stats, skillLevels);
+    skillEffect("invulnerability", skillLevels.invulnerability) +
+    itemTotal(itemEffects, "armor");
+  const resistance = calculateResistance(heroClass, stats, skillLevels, itemEffects);
+  const damageResistances = calculateDamageResistances(resistance, armor, skillLevels, itemEffects);
+  const lifeRegen = calculateLifeRegen(stats, skillLevels, itemEffects);
+  const manaRegen = calculateManaRegen(stats, skillLevels, itemEffects);
+  const spellcasting =
+    bonus(stats, "spellcasting") +
+    skillEffect("ritual", skillLevels.ritual) +
+    itemTotal(itemEffects, "spellcasting");
+  const initialTroopXp = bonus(stats, "initialTroopXp") + itemTotal(itemEffects, "training");
+  const morale = calculateMorale(build.raceId, stats, skillLevels, itemEffects);
   const commandEffect = calculateCommandEffect(morale);
   const armyLimitBonus = calculateArmyLimitBonus(morale);
   const unitAttackSpeed = calculateUnitAttackSpeed(morale);
-  const merchant = calculateMerchant(stats, skillLevels);
-  const command = calculateCommand(stats);
-  const commandRadius = calculateCommandRadius(stats);
+  const merchant = calculateMerchant(stats, skillLevels, itemEffects);
+  const command = calculateCommand(stats, itemEffects);
+  const commandRadius = getEffectiveCommandRadius(calculateCommandRadius(stats) + itemTotal(itemEffects, "command"));
   const groupLimit = getGroupLimitFromCommand(command);
-  const conversion = calculateConversion(level);
+  const conversion = calculateConversion(level, itemEffects);
   const conversionTime = getConversionTime(conversion);
   const conversionRange = commandRadius;
   const retinueSlots = 8;
-  const skillEffects = calculateConditionalSkillEffects(skillLevels);
-  const skillEffectList = calculateSkillEffectList(skillLevels, { includeInactive: true });
+  const skillEffects = calculateConditionalSkillEffects(skillLevels, itemEffects);
+  const skillEffectList = calculateSkillEffectList(skillLevels, { includeInactive: true, itemEffects });
 
   return {
     level,
     xpForLevel: getExperienceForLevel(level),
     nextLevelXp: level >= HERO_MAX_LEVEL ? null : getExperienceForLevel(level + 1),
     stats,
+    baseSkillLevels,
     skillLevels,
     combat,
     speed,
@@ -268,7 +285,7 @@ export function calculateHeroSummary(build) {
     life,
     mana,
     damage,
-    damageType: skillLevels.fireMissile > 0 ? "Hot and Pointy" : heroClass.id === "monk" ? "Crushing" : "Slashing",
+    damageType: getDamageType(heroClass, baseSkillLevels, itemEffects),
     armor,
     resistance,
     damageResistances,
@@ -290,6 +307,8 @@ export function calculateHeroSummary(build) {
     retinueSlots,
     skillEffects,
     skillEffectList,
+    itemEffects,
+    itemBreakdowns,
     dataNotes: {
       formulas: dataNotes.derivedStats,
       statBonuses: dataNotes.statBonuses,
@@ -309,16 +328,117 @@ export function calculateHeroSummary(build) {
   };
 }
 
-export function calculateConditionalSkillEffects(skillLevels = {}) {
-  return calculateSkillEffectList(skillLevels);
+const itemSkillBreakdownTargets = {
+  constitution: [{ key: "life", label: "Life" }],
+  ferocity: [{ key: "combat", label: "Combat" }],
+  running: [{ key: "speed", label: "Speed" }],
+  lore: [{ key: "mana", label: "Mana" }],
+  ritual: [{ key: "spellcasting", label: "Spellcasting" }],
+  mightyBlow: [{ key: "damage", label: "Damage" }],
+  invulnerability: [
+    { key: "armor", label: "Armor" },
+    { key: "piercing", label: "Piercing" },
+    { key: "slashing", label: "Slashing" },
+    { key: "crushing", label: "Crushing" },
+  ],
+  warding: [
+    { key: "resistance", label: "Resistance" },
+    { key: "fire", label: "Fire" },
+    { key: "cold", label: "Cold" },
+    { key: "electricity", label: "Electricity" },
+  ],
+  armorer: [{ key: "piercing", label: "Piercing" }],
+  scales: [{ key: "slashing", label: "Slashing" }],
+  thickHide: [{ key: "crushing", label: "Crushing" }],
+  fireResistance: [{ key: "fire", label: "Fire" }],
+  coldResistance: [{ key: "cold", label: "Cold" }],
+  electricityResistance: [{ key: "electricity", label: "Electricity" }],
+  elementalResistance: [
+    { key: "fire", label: "Fire" },
+    { key: "cold", label: "Cold" },
+    { key: "electricity", label: "Electricity" },
+  ],
+  magicResistance: [{ key: "magic", label: "Magic" }],
+  regeneration: [{ key: "lifeRegen", label: "Life Regen", format: formatSignedPercent }],
+  energy: [{ key: "manaRegen", label: "Mana Regen", format: formatSignedPercent }],
+  merchant: [{ key: "merchant", label: "Merchant" }],
+  leadership: [{ key: "morale", label: "Morale" }],
+};
+
+for (const skillId of RACE_MORALE_SKILL_VALUES) {
+  itemSkillBreakdownTargets[skillId] = [{ key: "morale", label: "Morale" }];
+}
+
+function buildItemBreakdowns(itemEffects = {}, baseSkillLevels = {}) {
+  const breakdowns = cloneItemBreakdowns(itemEffects.breakdowns);
+  const runningSkillLevels = { ...baseSkillLevels };
+
+  for (const contribution of itemEffects.skillContributions ?? []) {
+    const skillId = contribution.skillId;
+    const amount = Math.trunc(Number(contribution.amount) || 0);
+    const targets = itemSkillBreakdownTargets[skillId] ?? [];
+    if (!amount || !targets.length) continue;
+
+    const before = Math.max(0, Math.trunc(Number(runningSkillLevels[skillId]) || 0));
+    const after = Math.max(0, before + amount);
+    runningSkillLevels[skillId] = after;
+
+    const delta = skillEffect(skillId, after) - skillEffect(skillId, before);
+    if (!delta) continue;
+
+    for (const target of targets) {
+      addItemBreakdown(breakdowns, target.key, contribution.source, formatSkillItemBreakdown(contribution, delta, target));
+    }
+  }
+
+  return breakdowns;
+}
+
+function cloneItemBreakdowns(value = {}) {
+  return Object.fromEntries(
+    Object.entries(value ?? {}).map(([key, entries]) => [
+      key,
+      Array.isArray(entries) ? entries.map((entry) => ({ ...entry })) : [],
+    ]),
+  );
+}
+
+function addItemBreakdown(breakdowns, key, source, text) {
+  if (!key || !text) return;
+  if (!breakdowns[key]) breakdowns[key] = [];
+  breakdowns[key].push({ source, text });
+}
+
+function formatSkillItemBreakdown(contribution, delta, target) {
+  const value = target.format ? target.format(delta) : formatSigned(delta);
+  const amount = formatSigned(contribution.amount);
+  return `${value} ${target.label} from ${contribution.skillName} ${amount}`;
+}
+
+function getDamageType(heroClass, skillLevels = {}, itemEffects = {}) {
+  if (hasSkill(skillLevels, "fireMissile")) return "Hot and Pointy";
+  if (itemEffects.weaponDamageType) return itemEffects.weaponDamageType;
+  return heroClass.id === "monk" ? "Crushing" : "Slashing";
+}
+
+export function calculateConditionalSkillEffects(skillLevels = {}, itemEffects = {}) {
+  return calculateSkillEffectList(skillLevels, { itemEffects });
 }
 
 export function calculateSkillEffectList(skillLevels = {}, options = {}) {
   const effects = [];
   const includeInactive = options.includeInactive === true;
+  const itemEffects = options.itemEffects ?? {};
+  const directItemEffectKeys = {
+    assassin: "assassin",
+    vampirism: "vampirism",
+    weaponmaster: "criticalHit",
+  };
   const hasListedSkill = (skillId) => Object.prototype.hasOwnProperty.call(skillLevels ?? {}, skillId);
   const currentLevel = (skillId) => Math.max(0, Math.trunc(skillLevels?.[skillId] ?? 0));
-  const shouldInclude = (skillId) => (includeInactive ? hasListedSkill(skillId) : hasSkill(skillLevels, skillId));
+  const directItemEffect = (skillId) => itemTotal(itemEffects, directItemEffectKeys[skillId]);
+  const shouldInclude = (skillId) =>
+    includeInactive ? hasListedSkill(skillId) || directItemEffect(skillId) !== 0 : hasSkill(skillLevels, skillId) || directItemEffect(skillId) !== 0;
   const add = (skillId, label, value, detail = "", category = "Skill Effects", rawValue = null, skillLevel = currentLevel(skillId)) => {
     if (!shouldInclude(skillId)) return;
     effects.push({
@@ -335,7 +455,7 @@ export function calculateSkillEffectList(skillLevels = {}, options = {}) {
   const addSkillEffect = (skillId, label, formatter, detail = "", category = "Skill Effects") => {
     if (!shouldInclude(skillId)) return;
     const level = currentLevel(skillId);
-    const rawValue = skillEffect(skillId, level);
+    const rawValue = skillEffect(skillId, level) + directItemEffect(skillId);
     add(skillId, label, formatter(rawValue, level), detail, category, rawValue, level);
   };
   const signed = (value) => formatSigned(value);
@@ -454,11 +574,16 @@ export function calculateSkillEffectList(skillLevels = {}, options = {}) {
   return effects;
 }
 
-export function calculateAttackSpeed(stats, skillLevels = {}) {
+export function calculateAttackSpeed(stats, skillLevels = {}, itemEffects = {}) {
   const attackSpeedBonus = bonus(stats, "attackSpeed");
   const swiftnessMultiplier = 100 + skillEffect("swiftness", skillLevels.swiftness);
   const basePeriodMs = 1000 - Math.trunc((10 * attackSpeedBonus * swiftnessMultiplier) / 100);
-  const fightSpeed = skillLevels.fireMissile > 0 ? 8 : 10;
+  const itemFightSpeed =
+    itemTotal(itemEffects, "speedAttack") +
+    itemTotal(itemEffects, "speedAll") -
+    itemTotal(itemEffects, "slowAttack") -
+    itemTotal(itemEffects, "slowAll");
+  const fightSpeed = Math.max(1, (skillLevels.fireMissile > 0 ? 8 : 10) + itemFightSpeed);
   const rawPeriodMs = Math.trunc((basePeriodMs * 10) / fightSpeed);
   const periodMs = rawPeriodMs > 0 ? rawPeriodMs : HERO_ATTACK_SPEED_FALLBACK_PERIOD_MS;
   return {
@@ -471,41 +596,51 @@ export function calculateAttackSpeed(stats, skillLevels = {}) {
   };
 }
 
-export function calculateResistance(heroClass, stats, skillLevels = {}) {
-  return heroClass.baseResistance + bonus(stats, "resistance") + skillEffect("warding", skillLevels.warding);
+export function calculateResistance(heroClass, stats, skillLevels = {}, itemEffects = {}) {
+  return (
+    heroClass.baseResistance +
+    bonus(stats, "resistance") +
+    skillEffect("warding", skillLevels.warding) +
+    itemTotal(itemEffects, "resistance")
+  );
 }
 
-export function calculateDamageResistances(baseResistance, baseArmor = 0, skillLevels = {}) {
+export function calculateDamageResistances(baseResistance, baseArmor = 0, skillLevels = {}, itemEffects = {}) {
   const elemental = skillEffect("elementalResistance", skillLevels.elementalResistance);
   return {
     piercing: baseArmor + skillEffect("armorer", skillLevels.armorer),
     slashing: baseArmor + skillEffect("scales", skillLevels.scales),
     crushing: baseArmor + skillEffect("thickHide", skillLevels.thickHide),
-    fire: baseResistance + skillEffect("fireResistance", skillLevels.fireResistance) + elemental,
-    cold: baseResistance + skillEffect("coldResistance", skillLevels.coldResistance) + elemental,
-    electricity: baseResistance + skillEffect("electricityResistance", skillLevels.electricityResistance) + elemental,
-    magic: skillEffect("magicResistance", skillLevels.magicResistance),
+    fire: baseResistance + skillEffect("fireResistance", skillLevels.fireResistance) + elemental + itemTotal(itemEffects, "fireResistance"),
+    cold: baseResistance + skillEffect("coldResistance", skillLevels.coldResistance) + elemental + itemTotal(itemEffects, "coldResistance"),
+    electricity:
+      baseResistance +
+      skillEffect("electricityResistance", skillLevels.electricityResistance) +
+      elemental +
+      itemTotal(itemEffects, "electricityResistance"),
+    magic: skillEffect("magicResistance", skillLevels.magicResistance) + itemTotal(itemEffects, "magicResistance"),
   };
 }
 
-export function calculateLifeRegen(stats, skillLevels = {}) {
+export function calculateLifeRegen(stats, skillLevels = {}, itemEffects = {}) {
   const pointsPer20Seconds = bonus(stats, "lifeRegen");
-  const skillBonusPercent = skillEffect("regeneration", skillLevels.regeneration);
+  const skillBonusPercent = skillEffect("regeneration", skillLevels.regeneration) + itemTotal(itemEffects, "lifeRegen");
   return calculateRegen(pointsPer20Seconds, skillBonusPercent);
 }
 
-export function calculateManaRegen(stats, skillLevels = {}) {
+export function calculateManaRegen(stats, skillLevels = {}, itemEffects = {}) {
   const pointsPer20Seconds = bonus(stats, "manaRegen");
-  const skillBonusPercent = skillEffect("energy", skillLevels.energy);
+  const skillBonusPercent = skillEffect("energy", skillLevels.energy) + itemTotal(itemEffects, "manaRegen");
   return calculateRegen(pointsPer20Seconds, skillBonusPercent);
 }
 
-export function calculateMorale(raceId, stats, skillLevels = {}) {
+export function calculateMorale(raceId, stats, skillLevels = {}, itemEffects = {}) {
   const racialSkillId = RACE_MORALE_SKILL_IDS[raceId];
   return (
     bonus(stats, "morale") +
     skillEffect("leadership", skillLevels.leadership) +
-    skillEffect(racialSkillId, skillLevels[racialSkillId])
+    skillEffect(racialSkillId, skillLevels[racialSkillId]) +
+    itemTotal(itemEffects, "morale")
   );
 }
 
@@ -525,8 +660,8 @@ export function calculateUnitAttackSpeed(morale) {
   };
 }
 
-export function calculateMerchant(stats, skillLevels = {}) {
-  const score = bonus(stats, "discount") + skillEffect("merchant", skillLevels.merchant);
+export function calculateMerchant(stats, skillLevels = {}, itemEffects = {}) {
+  const score = bonus(stats, "discount") + skillEffect("merchant", skillLevels.merchant) + itemTotal(itemEffects, "merchant");
   const discountPercent = score === 0 ? 0 : 100 - 100 * (100 / (score + 100));
   return {
     score,
@@ -534,8 +669,8 @@ export function calculateMerchant(stats, skillLevels = {}) {
   };
 }
 
-export function calculateCommand(stats) {
-  return 5 + stats.charisma;
+export function calculateCommand(stats, itemEffects = {}) {
+  return 5 + stats.charisma + itemTotal(itemEffects, "command");
 }
 
 export function calculateCommandRadius(stats) {
@@ -555,8 +690,8 @@ export function getGroupLimitFromCommand(command) {
   return 10;
 }
 
-export function calculateConversion(level) {
-  return 8 + Math.trunc(clampLevel(level) / 2);
+export function calculateConversion(level, itemEffects = {}) {
+  return 8 + Math.trunc(clampLevel(level) / 2) + itemTotal(itemEffects, "conversion");
 }
 
 export function getConversionTime(conversion) {
@@ -764,9 +899,17 @@ function hasSkill(skillLevels, skillId) {
   return Math.max(0, Math.trunc(skillLevels?.[skillId] ?? 0)) > 0;
 }
 
+function itemTotal(itemEffects, key) {
+  return Math.trunc(Number(itemEffects?.totals?.[key]) || 0);
+}
+
 function formatSigned(value) {
   const number = Math.trunc(Number(value) || 0);
   return number > 0 ? `+${number}` : String(number);
+}
+
+function formatSignedPercent(value) {
+  return `${formatSigned(value)}%`;
 }
 
 function getFireMissileRange(level) {

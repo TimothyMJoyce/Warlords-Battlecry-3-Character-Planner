@@ -390,6 +390,7 @@ async function getLocalItems() {
       ok: false,
       available: false,
       items: [],
+      sets: [],
       error: error instanceof Error ? error.message : String(error),
     };
   }

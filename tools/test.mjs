@@ -235,6 +235,10 @@ assert.match(appSource, /data-item-page-delta/);
 assert.match(appSource, /itemSearchPageSize/);
 assert.match(appSource, /getVisibleItemSearchPage/);
 assert.match(appSource, /clampItemSearchPage/);
+assert.match(appSource, /localItemSets/);
+assert.match(appSource, /buildWithLocalItemData/);
+assert.match(appSource, /itemBreakdowns/);
+assert.match(appSource, /summary-tooltip/);
 assert.doesNotMatch(appSource, /4:3 preview \/ \$\{escapeHtml\(animation\.label\)\}/);
 assert.deepEqual(getCommandRadiusSceneMetrics(25), {
   radius: 19,
@@ -542,6 +546,12 @@ const parsedItemXml = parseItemXml(`
     <Image iconrow="1" iconcol="1" />
     <Data value="10" level="minor" rarity="10"/>
   </Item>
+  <Set id="0">
+    <Name>The Armor of the Gods</Name>
+    <Power type="morale" data="25"/>
+    <Item id="80"/>
+    <Item id="81"/>
+  </Set>
 </Items>
 `);
 assert.equal(parsedItemXml.items.length, 1);
@@ -550,6 +560,13 @@ assert.deepEqual(parsedItemXml.items[0].powers.map((power) => [power.typeLabel, 
   ["Spell Casting", 5],
 ]);
 assert.equal(parsedItemXml.items[0].description, "A common staff.");
+assert.equal(parsedItemXml.sets.length, 1);
+assert.deepEqual(parsedItemXml.sets[0].items, [80, 81]);
+assert.deepEqual([parsedItemXml.sets[0].name, parsedItemXml.sets[0].power.type, parsedItemXml.sets[0].power.data], [
+  "The Armor of the Gods",
+  "morale",
+  25,
+]);
 
 const parsedGameText = parseGameText(`
 [0593]\t+%d to Combat Skill
@@ -599,6 +616,9 @@ try {
   assert.equal(itemCatalog.ok, true);
   assert.equal(itemCatalog.available, true);
   assert.equal(itemCatalog.items.length > 100, true);
+  assert.equal(itemCatalog.sets.length, 8);
+  assert.equal(itemCatalog.sets[0].name, "The Armor of the Gods");
+  assert.equal(itemCatalog.sets[0].effectText, "+25 Morale");
   assert.equal(itemCatalog.items.every((item) => item.effectText), true);
   assert.equal(itemCatalog.items.every((item) => item.iconSrc.startsWith("data:image/png;base64,iVBORw0KGgo")), true);
   assert.equal(itemCatalog.items.flatMap((item) => item.powers).every((power) => power.displayText), true);
@@ -622,6 +642,54 @@ try {
   );
   assert.equal(itemCatalog.items.find((item) => item.name === "Blackfire Axe").shine, "artifact");
   assert.equal(itemCatalog.items.find((item) => item.name === "Helm of the Gods").shine, "set");
+
+  const itemDataBuild = {
+    ...baseBuild,
+    itemCatalog: itemCatalog.items,
+    itemSets: itemCatalog.sets,
+  };
+  const staffSummary = calculateHeroSummary({
+    ...itemDataBuild,
+    items: { weapon: "item-1" },
+  });
+  assert.equal(staffSummary.damage, summary.damage + 5);
+  assert.equal(staffSummary.damageType, "Crushing");
+  assert.equal(staffSummary.spellcasting, summary.spellcasting + 5);
+  assert.equal(staffSummary.itemBreakdowns.damage.some((entry) => entry.source === "Gnarled Staff"), true);
+  assert.equal(staffSummary.itemBreakdowns.spellcasting.some((entry) => entry.source === "Gnarled Staff"), true);
+
+  const ringSummary = calculateHeroSummary({
+    ...itemDataBuild,
+    items: { ring1: "item-13" },
+  });
+  assert.equal(ringSummary.life, summary.life + 15);
+  assert.equal(ringSummary.skillLevels.constitution, (summary.skillLevels.constitution ?? 0) + 1);
+  assert.equal(ringSummary.itemBreakdowns.life.some((entry) => entry.source === "Ring of Health"), true);
+
+  const assassinBlade = itemCatalog.items.find((item) => item.name === "Assassin's Blade");
+  const assassinBladeSummary = calculateHeroSummary({
+    ...itemDataBuild,
+    raceId: "dwarf",
+    classId: "assassin",
+    items: { weapon: assassinBlade.id },
+  });
+  assert.equal(assassinBladeSummary.skillEffectList.find((effect) => effect.skillId === "assassin").rawValue, 12);
+  assert.equal(assassinBladeSummary.itemBreakdowns.assassin.some((entry) => entry.source === "Assassin's Blade"), true);
+
+  const godsSetSummary = calculateHeroSummary({
+    ...itemDataBuild,
+    items: {
+      head: "item-80",
+      body: "item-81",
+      offhand: "item-82",
+      boots: "item-83",
+    },
+  });
+  assert.equal(godsSetSummary.armor, summary.armor + 60);
+  assert.equal(godsSetSummary.speed, summary.speed + 3);
+  assert.equal(godsSetSummary.spellcasting, summary.spellcasting - 25);
+  assert.equal(godsSetSummary.morale, summary.morale + 25);
+  assert.equal(godsSetSummary.itemBreakdowns.morale.some((entry) => entry.source === "The Armor of the Gods set"), true);
 
   const skillTextCatalog = await readSkillTextCatalog();
   assert.equal(skillTextCatalog.ok, true);

@@ -86,6 +86,7 @@ let localSettingsStatus = "";
 let localItemCatalog = [];
 let localItemCatalogError = "";
 let localItemShineSprites = {};
+let localItemSets = [];
 let localSpellTextByIndex = new Map();
 let localSpellTextError = "";
 let localSkillTextById = new Map();
@@ -94,6 +95,7 @@ let localSkillTextError = "";
 let itemSearchQuery = "";
 let itemLevelFilter = "all";
 let itemSearchPage = 0;
+let tooltipDismissHandlersBound = false;
 let previewAnimationId = DEFAULT_HERO_ANIMATION_ID;
 let heroPreviewExpanded = false;
 let heroPreviewZoom = 1;
@@ -201,14 +203,24 @@ function activeRuleset() {
   return getRuleset(activeRulesetId);
 }
 
+function buildWithLocalItemData(value) {
+  if (activeRulesetId !== VANILLA_RULESET_ID) return value;
+  return {
+    ...value,
+    itemCatalog: localItemCatalog,
+    itemSets: localItemSets,
+  };
+}
+
 function render() {
   rememberCurrentDraft();
-  const summary = calculateHeroSummary(build);
+  const summary = calculateHeroSummary(buildWithLocalItemData(build));
   const startingStats = calculateStartingStats(build.raceId, build.classId);
   const statValidation = validateStatAllocation(build);
   const skillValidation = validateSkillAllocation(build);
   const pointBudget = getPointBudget(build);
   const unlocks = getAvailableSkillUnlocks(build);
+  const skillRows = getSkillRows(unlocks, summary);
   const effectsBySkill = groupSkillEffectsBySkill(summary.skillEffectList);
   const classOptions = getSortedHeroClasses();
   const race = races.find((entry) => entry.id === build.raceId);
@@ -306,11 +318,12 @@ function render() {
           </div>
           ${statAllocator("strength", startingStats, statValidation, pointBudget, summary)}
           ${derivedStatsSection("Strength Stats", `
-            <div class="core-grid">
-              ${summaryItem("Life", summary.life, { secondary: formatRegen(summary.lifeRegen, "HP") })}
-              ${summaryItem("Combat", summary.combat)}
-              ${summaryItem("Damage", `${summary.damage} ${summary.damageType}`)}
-            </div>
+            ${derivedStatGroup([
+              { label: "Life", value: summary.life, tooltip: statBreakdown(summary, "life") },
+              { label: "Life Regen", value: formatRegen(summary.lifeRegen, "HP"), tooltip: statBreakdown(summary, "lifeRegen") },
+              { label: "Combat", value: summary.combat, tooltip: statBreakdown(summary, "combat") },
+              { label: "Damage", value: `${summary.damage} ${summary.damageType}`, tooltip: statBreakdown(summary, "damage") },
+            ])}
           `)}
         </section>
 
@@ -320,11 +333,12 @@ function render() {
           </div>
           ${statAllocator("intelligence", startingStats, statValidation, pointBudget, summary)}
           ${derivedStatsSection("Intelligence Stats", `
-            <div class="core-grid">
-              ${summaryItem("Mana", summary.mana, { secondary: formatRegen(summary.manaRegen, "MP") })}
-              ${summaryItem("Spellcasting", formatPercentBonus(summary.spellcasting))}
-              ${summaryItem("Initial Troop XP", formatSignedValue(summary.initialTroopXp))}
-            </div>
+            ${derivedStatGroup([
+              { label: "Mana", value: summary.mana, tooltip: statBreakdown(summary, "mana") },
+              { label: "Mana Regen", value: formatRegen(summary.manaRegen, "MP"), tooltip: statBreakdown(summary, "manaRegen") },
+              { label: "Spellcasting", value: formatPercentBonus(summary.spellcasting), tooltip: statBreakdown(summary, "spellcasting") },
+              { label: "Initial Troop XP", value: formatSignedValue(summary.initialTroopXp), tooltip: statBreakdown(summary, "initialTroopXp") },
+            ])}
           `)}
         </section>
 
@@ -335,22 +349,23 @@ function render() {
           ${statAllocator("dexterity", startingStats, statValidation, pointBudget, summary)}
           <div class="dexterity-grid">
             ${derivedStatsSection("Dexterity Stats", `
-              <div class="core-grid">
-                ${summaryItem("Speed", summary.speed)}
-                ${summaryItem("Attack Speed", formatAttackSpeed(summary.attackSpeed))}
-              </div>
+              ${derivedStatGroup([
+                { label: "Speed", value: summary.speed, tooltip: statBreakdown(summary, "speed") },
+                { label: "Attack Speed", value: formatAttackSpeed(summary.attackSpeed), tooltip: statBreakdown(summary, "attackSpeed") },
+                { label: "Conversion Time", value: `${summary.conversionTime}s`, tooltip: statBreakdown(summary, "conversionTime") },
+              ])}
             `)}
             ${defenseGroup("Armor", summary.armor, [
-              ["Piercing", summary.damageResistances.piercing],
-              ["Slashing", summary.damageResistances.slashing],
-              ["Crushing", summary.damageResistances.crushing],
-            ])}
+              ["Piercing", summary.damageResistances.piercing, "Piercing", statBreakdown(summary, "piercing")],
+              ["Slashing", summary.damageResistances.slashing, "Slashing", statBreakdown(summary, "slashing")],
+              ["Crushing", summary.damageResistances.crushing, "Crushing", statBreakdown(summary, "crushing")],
+            ], summaryIconKeys.Armor, statBreakdown(summary, "armor"))}
             ${defenseGroup("Resistance", summary.resistance, [
-              ["Fire", summary.damageResistances.fire, "fire"],
-              ["Cold", summary.damageResistances.cold, "cold"],
-              ["Electricity", summary.damageResistances.electricity, "electricity"],
-              ["Magic", summary.damageResistances.magic, "magic"],
-            ])}
+              ["Fire", summary.damageResistances.fire, "fire", statBreakdown(summary, "fire")],
+              ["Cold", summary.damageResistances.cold, "cold", statBreakdown(summary, "cold")],
+              ["Electricity", summary.damageResistances.electricity, "electricity", statBreakdown(summary, "electricity")],
+              ["Magic", summary.damageResistances.magic, "magic", statBreakdown(summary, "magic")],
+            ], summaryIconKeys.Resistance, statBreakdown(summary, "resistance"))}
           </div>
         </section>
 
@@ -362,10 +377,10 @@ function render() {
           <div class="summary-grid">
             ${moraleEffectsSection(summary)}
             ${derivedStatsSection("Charisma Stats", `
-              <div class="core-grid">
-                ${summaryItem("Merchant", formatMerchant(summary.merchant))}
-                ${summaryItem("Command Radius", summary.commandRadius, { secondary: `Conversion Time ${summary.conversionTime}s` })}
-              </div>
+              ${derivedStatGroup([
+                { label: "Merchant", value: formatMerchant(summary.merchant), tooltip: statBreakdown(summary, "merchant") },
+                { label: "Command Radius", value: summary.commandRadius, tooltip: statBreakdown(summary, "commandRadius") },
+              ])}
             `)}
           </div>
         </section>
@@ -376,7 +391,7 @@ function render() {
             <span>${skillBudgetText(skillValidation, pointBudget)}</span>
           </div>
           <div class="skills-list">
-            ${unlocks.map((unlock) => skillRow(unlock, skillValidation, pointBudget, effectsBySkill.get(unlock.skillId) ?? [])).join("")}
+            ${skillRows.map((unlock) => skillRow(unlock, skillValidation, pointBudget, effectsBySkill.get(unlock.skillId) ?? [], summary)).join("")}
           </div>
           ${messages(skillValidation.warnings)}
           ${localSkillTextError ? `<p class="import-note is-error">${escapeHtml(localSkillTextError)}</p>` : ""}
@@ -402,6 +417,7 @@ function render() {
 
 function bindEvents() {
   bindExclusiveTopbarMenus();
+  bindExclusiveTooltips();
 
   document.querySelectorAll("[data-ruleset-id]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -527,7 +543,7 @@ function bindEvents() {
   document.querySelector("#hero-preview-details")?.addEventListener("toggle", (event) => {
     heroPreviewExpanded = event.currentTarget.open;
     if (heroPreviewExpanded) {
-      startHeroPreview(calculateHeroSummary(build), currentAvatarId());
+      startHeroPreview(calculateHeroSummary(buildWithLocalItemData(build)), currentAvatarId());
     } else {
       stopHeroPreview();
     }
@@ -601,6 +617,98 @@ function bindExclusiveTopbarMenus() {
       }
     });
   }
+}
+
+function bindExclusiveTooltips() {
+  const tooltips = Array.from(document.querySelectorAll(".summary-tooltip, .item-description-tooltip"));
+  for (const tooltip of tooltips) {
+    tooltip.addEventListener("toggle", () => {
+      tooltip.classList.remove("is-positioned");
+      if (!tooltip.open) return;
+      for (const otherTooltip of getOpenTooltips()) {
+        if (otherTooltip !== tooltip) otherTooltip.open = false;
+      }
+      positionTooltip(tooltip);
+    });
+  }
+  bindGlobalTooltipDismissHandlers();
+}
+
+function bindGlobalTooltipDismissHandlers() {
+  if (tooltipDismissHandlersBound) return;
+  tooltipDismissHandlersBound = true;
+
+  document.addEventListener("pointerdown", (event) => {
+    if (event.target?.closest?.(".summary-tooltip, .item-description-tooltip")) return;
+    closeOpenTooltips();
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeOpenTooltips();
+  });
+
+  window.addEventListener("scroll", closeTooltipsOutsideViewport, true);
+  window.addEventListener("resize", closeTooltipsOutsideViewport);
+}
+
+function getOpenTooltips() {
+  return Array.from(document.querySelectorAll(".summary-tooltip[open], .item-description-tooltip[open]"));
+}
+
+function closeOpenTooltips() {
+  for (const tooltip of getOpenTooltips()) {
+    tooltip.classList.remove("is-positioned");
+    tooltip.open = false;
+  }
+}
+
+function closeTooltipsOutsideViewport() {
+  const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+  for (const tooltip of getOpenTooltips()) {
+    const anchor = tooltip.querySelector("summary");
+    const rect = anchor?.getBoundingClientRect();
+    if (!rect || rect.bottom <= 0 || rect.top >= viewportHeight || rect.right <= 0 || rect.left >= viewportWidth) {
+      tooltip.classList.remove("is-positioned");
+      tooltip.open = false;
+    } else {
+      positionTooltip(tooltip);
+    }
+  }
+}
+
+function positionTooltip(tooltip) {
+  const anchor = tooltip.querySelector("summary");
+  const bubble = tooltip.querySelector("p");
+  if (!anchor || !bubble) return;
+
+  const margin = 12;
+  const gap = 8;
+  const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+
+  tooltip.classList.remove("is-positioned");
+  bubble.style.left = "0px";
+  bubble.style.top = "0px";
+
+  const anchorRect = anchor.getBoundingClientRect();
+  const bubbleRect = bubble.getBoundingClientRect();
+  const bubbleWidth = Math.min(bubbleRect.width || 320, Math.max(120, viewportWidth - margin * 2));
+  const bubbleHeight = Math.min(bubbleRect.height || 80, Math.max(60, viewportHeight - margin * 2));
+
+  let left = anchorRect.right - bubbleWidth;
+  left = Math.max(margin, Math.min(left, viewportWidth - bubbleWidth - margin));
+
+  const topAbove = anchorRect.top - bubbleHeight - gap;
+  const topBelow = anchorRect.bottom + gap;
+  let top = topAbove >= margin ? topAbove : topBelow;
+  if (top + bubbleHeight > viewportHeight - margin) {
+    top = Math.max(margin, viewportHeight - bubbleHeight - margin);
+  }
+
+  bubble.style.left = `${Math.round(left)}px`;
+  bubble.style.top = `${Math.round(top)}px`;
+  tooltip.classList.add("is-positioned");
 }
 
 function updateStat(key, delta) {
@@ -962,19 +1070,57 @@ function statRow(key, base, allocated = 0, total, canAdd) {
   `;
 }
 
-function skillRow(unlock, skillValidation, pointBudget, effects = []) {
+function getSkillRows(unlocks, summary) {
+  const rows = [...unlocks];
+  const existingSkillIds = new Set(rows.map((unlock) => unlock.skillId));
+  const itemOnlySkillIds = new Set();
+
+  for (const contribution of summary.itemEffects?.skillContributions ?? []) {
+    const skillId = contribution.skillId;
+    if (skillId && !existingSkillIds.has(skillId)) itemOnlySkillIds.add(skillId);
+  }
+
+  for (const skillId of [...itemOnlySkillIds].sort((left, right) => getSkillSortName(left).localeCompare(getSkillSortName(right)))) {
+    rows.push({
+      skillId,
+      origin: "Item",
+      mergedFrom: ["item"],
+      availableAt: 1,
+      levelAvailable: true,
+      prerequisiteMet: true,
+      available: true,
+      passive: true,
+      maxLevel: Infinity,
+      currentLevel: 0,
+      itemOnly: true,
+    });
+  }
+
+  return rows;
+}
+
+function getSkillSortName(skillId) {
+  return getSkillDisplayName(skillId, skillsById[skillId]?.displayName ?? skillId);
+}
+
+function skillRow(unlock, skillValidation, pointBudget, effects = [], summary = {}) {
   const skill = skillsById[unlock.skillId];
   const allocated = unlock.passive ? 0 : (build.skillAllocation[unlock.skillId] ?? 0);
   const originText = unlock.mergedFrom?.length > 1 ? "Race + class" : unlock.origin;
   const unlockText = getSkillUnlockText(unlock);
   const locked = !unlock.available ? "is-locked" : "";
   const hasEffects = effects.length ? "has-effects" : "";
+  const itemTooltip = skillItemBreakdown(summary, unlock.skillId);
+  const hasItemModifier = itemTooltip ? "has-tooltip" : "";
+  const effectiveLevel = getEffectiveSkillLevel(summary, unlock.skillId, unlock.currentLevel);
   const maxed = unlock.maxLevel !== Infinity && unlock.currentLevel >= unlock.maxLevel;
   const canAdd = unlock.available && !unlock.passive && !maxed && canSpendSkill(skillValidation, pointBudget);
   const skillName = getSkillDisplayName(unlock.skillId, skill?.displayName ?? unlock.skillId);
-  const skillDescription = getSkillDescription(unlock.skillId, unlock.currentLevel, effects) || "No game description available.";
-  const controls = unlock.passive
-    ? `<span class="passive-skill">Passive</span>`
+  const skillDescription = getSkillDescription(unlock.skillId, effectiveLevel, effects) || "No game description available.";
+  const controls = unlock.itemOnly
+    ? `<span class="passive-skill">Item</span>`
+    : unlock.passive
+      ? `<span class="passive-skill">Passive</span>`
     : `
       <div class="stepper">
         <button type="button" data-skill-key="${unlock.skillId}" data-skill-action="-1" ${allocated <= 0 ? "disabled" : ""}>-</button>
@@ -983,15 +1129,32 @@ function skillRow(unlock, skillValidation, pointBudget, effects = []) {
       </div>
     `;
   return `
-    <article class="skill-row ${locked} ${hasEffects}">
+    <article class="skill-row ${locked} ${hasEffects} ${hasItemModifier}">
       <div class="skill-info">
         <strong>${escapeHtml(skillName)}</strong>
         <span>${escapeHtml(originText)} / ${escapeHtml(unlockText)}</span>
       </div>
       ${skillDescriptionCell(skillDescription)}
       ${controls}
-      <output>${unlock.currentLevel}</output>
+      ${skillLevelOutput(unlock.currentLevel, effectiveLevel, itemTooltip, skillName)}
     </article>
+  `;
+}
+
+function getEffectiveSkillLevel(summary, skillId, fallbackLevel = 0) {
+  return Math.max(0, Math.trunc(Number(summary.skillLevels?.[skillId] ?? fallbackLevel) || 0));
+}
+
+function skillLevelOutput(baseLevel, effectiveLevel, tooltip, skillName) {
+  const hasLevelBonus = effectiveLevel !== baseLevel;
+  const baseMarkup = hasLevelBonus ? `<small>base ${escapeHtml(baseLevel)}</small>` : "";
+  const tooltipMarkup = tooltip ? summaryTooltip(`${skillName} item modifiers`, tooltip) : "";
+  return `
+    <div class="skill-level-output ${tooltip ? "has-tooltip" : ""}">
+      <strong>${escapeHtml(effectiveLevel)}</strong>
+      ${baseMarkup}
+      ${tooltipMarkup}
+    </div>
   `;
 }
 
@@ -2269,15 +2432,92 @@ function derivedStatsSection(title, content) {
   `;
 }
 
+const statBreakdownLabels = {
+  armor: "Armor",
+  attackSpeed: "Attack Speed",
+  cold: "Cold",
+  combat: "Combat",
+  commandRadius: "Command Radius",
+  conversionTime: "Conversion Time",
+  crushing: "Crushing",
+  damage: "Damage",
+  electricity: "Electricity",
+  fire: "Fire",
+  initialTroopXp: "Initial Troop XP",
+  life: "Life",
+  lifeRegen: "Life Regen",
+  magic: "Magic",
+  mana: "Mana",
+  manaRegen: "Mana Regen",
+  merchant: "Merchant",
+  morale: "Morale",
+  piercing: "Piercing",
+  resistance: "Resistance",
+  slashing: "Slashing",
+  speed: "Speed",
+  spellcasting: "Spellcasting",
+};
+
+const directSkillItemBreakdownKeys = {
+  assassin: "assassin",
+  vampirism: "vampirism",
+  weaponmaster: "criticalHit",
+};
+
+function statBreakdown(summary, ...keys) {
+  const rows = [];
+  const itemBreakdowns = summary.itemBreakdowns ?? {};
+  const groups = keys
+    .map((key) => ({ key, entries: Array.isArray(itemBreakdowns[key]) ? itemBreakdowns[key] : [] }))
+    .filter((group) => group.entries.length);
+  const showLabels = groups.length > 1;
+
+  for (const { key, entries } of groups) {
+    for (const entry of entries) {
+      const source = entry.source ? `${entry.source}: ` : "";
+      const prefix = showLabels ? `${statBreakdownLabels[key] ?? key}: ` : "";
+      rows.push(`${prefix}${source}${entry.text}`);
+    }
+  }
+
+  return rows.length ? `Item modifiers:\n${dedupeRows(rows).join("\n")}` : "";
+}
+
+function skillItemBreakdown(summary, skillId) {
+  const rows = [];
+  const itemEffects = summary.itemEffects ?? {};
+
+  for (const contribution of itemEffects.skillContributions ?? []) {
+    if (contribution.skillId !== skillId) continue;
+    const source = contribution.source ? `${contribution.source}: ` : "";
+    const amount = formatSignedValue(contribution.amount);
+    const levelText = Math.abs(Number(contribution.amount) || 0) === 1 ? "skill level" : "skill levels";
+    const detail = contribution.text ? ` (${contribution.text})` : "";
+    rows.push(`${source}${amount} ${levelText}${detail}`);
+  }
+
+  const directBreakdownKey = directSkillItemBreakdownKeys[skillId];
+  for (const entry of itemEffects.breakdowns?.[directBreakdownKey] ?? []) {
+    const source = entry.source ? `${entry.source}: ` : "";
+    rows.push(`${source}${entry.text}`);
+  }
+
+  return rows.length ? `Item modifiers:\n${dedupeRows(rows).join("\n")}` : "";
+}
+
+function dedupeRows(rows) {
+  return [...new Set(rows.map((row) => String(row ?? "").trim()).filter(Boolean))];
+}
+
 function summaryItem(label, value, options = {}, iconKeyOverride = summaryIconKeys[label]) {
   const settings = typeof options === "string" ? { tooltip: options, iconKey: iconKeyOverride } : options;
   const tooltip = settings.tooltip ?? "";
   const secondary = settings.secondary ?? "";
   const iconKey = settings.iconKey ?? summaryIconKeys[label];
-  const tooltipMarkup = tooltip ? `<span class="summary-tooltip" role="tooltip">${escapeHtml(tooltip)}</span>` : "";
+  const tooltipMarkup = tooltip ? summaryTooltip(`${label} item modifiers`, tooltip) : "";
   const secondaryMarkup = secondary ? `<small class="summary-subvalue">${escapeHtml(secondary)}</small>` : "";
   return `
-    <div class="summary-item ${tooltip ? "has-tooltip" : ""}" ${tooltip ? 'tabindex="0"' : ""}>
+    <div class="summary-item ${tooltip ? "has-tooltip" : ""}">
       <span class="summary-label">${iconMarkup(iconKey)}${escapeHtml(label)}</span>
       <span class="summary-value">
         <strong>${escapeHtml(value)}</strong>
@@ -2288,18 +2528,58 @@ function summaryItem(label, value, options = {}, iconKeyOverride = summaryIconKe
   `;
 }
 
-function defenseGroup(label, value, items, iconKey = summaryIconKeys[label]) {
+function summaryTooltip(label, tooltip) {
+  return `
+    <details class="summary-tooltip">
+      <summary aria-label="${escapeHtml(label)}">?</summary>
+      <p>${escapeHtml(tooltip)}</p>
+    </details>
+  `;
+}
+
+function derivedStatGroup(rows) {
+  return `
+    <section class="derived-stat-group">
+      <div class="derived-stat-group-list">
+        ${rows.map((row) => derivedStatRow(row)).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function derivedStatRow({ label, value, secondary = "", tooltip = "", iconKey = summaryIconKeys[label] }) {
+  const tooltipMarkup = tooltip ? summaryTooltip(`${label} item modifiers`, tooltip) : "";
+  const secondaryMarkup = secondary ? `<small class="summary-subvalue">${escapeHtml(secondary)}</small>` : "";
+  return `
+    <div class="derived-stat-row ${tooltip ? "has-tooltip" : ""}">
+      <span class="summary-label">${iconMarkup(iconKey)}${escapeHtml(label)}</span>
+      <span class="derived-stat-value">
+        <strong>${escapeHtml(value)}</strong>
+        ${secondaryMarkup}
+        ${tooltipMarkup}
+      </span>
+    </div>
+  `;
+}
+
+function defenseGroup(label, value, items, iconKey = summaryIconKeys[label], tooltip = "") {
   return `
     <div class="defense-group">
-      <div class="defense-parent">
+      <div class="defense-parent ${tooltip ? "has-tooltip" : ""}">
         <span class="summary-label">${iconMarkup(iconKey)}${escapeHtml(label)}</span>
-        <strong>${escapeHtml(value)}</strong>
+        <span class="defense-value">
+          <strong>${escapeHtml(value)}</strong>
+          ${tooltip ? summaryTooltip(`${label} item modifiers`, tooltip) : ""}
+        </span>
       </div>
       <div class="defense-sublist">
-        ${items.map(([itemLabel, itemValue, itemIconKey = summaryIconKeys[itemLabel]]) => `
-          <div class="defense-subrow">
+        ${items.map(([itemLabel, itemValue, itemIconKey = summaryIconKeys[itemLabel], itemTooltip = ""]) => `
+          <div class="defense-subrow ${itemTooltip ? "has-tooltip" : ""}">
             <span class="summary-label">${iconMarkup(itemIconKey)}${escapeHtml(itemLabel)}</span>
-            <strong>${escapeHtml(itemValue)}</strong>
+            <span class="defense-value">
+              <strong>${escapeHtml(itemValue)}</strong>
+              ${itemTooltip ? summaryTooltip(`${itemLabel} item modifiers`, itemTooltip) : ""}
+            </span>
           </div>
         `).join("")}
       </div>
@@ -2308,26 +2588,33 @@ function defenseGroup(label, value, items, iconKey = summaryIconKeys[label]) {
 }
 
 function moraleEffectsSection(summary) {
+  const tooltip = statBreakdown(summary, "morale");
   return `
     <section class="morale-effects">
-      <div class="morale-main">
+      <div class="morale-main ${tooltip ? "has-tooltip" : ""}">
         <span class="summary-label">${iconMarkup(summaryIconKeys.Morale)}Morale</span>
-        <strong>${summary.morale}</strong>
+        <span class="morale-value">
+          <strong>${summary.morale}</strong>
+          ${tooltip ? summaryTooltip("Morale item modifiers", tooltip) : ""}
+        </span>
       </div>
       <div class="morale-effects-list">
-        ${moraleEffectRow("Army Limit Bonus", formatSignedValue(summary.armyLimitBonus))}
-        ${moraleEffectRow("Command Effect", `${summary.commandEffect}s`)}
-        ${moraleEffectRow("Unit Attack Speed", formatUnitAttackSpeed(summary.unitAttackSpeed))}
+        ${moraleEffectRow("Army Limit Bonus", formatSignedValue(summary.armyLimitBonus), tooltip)}
+        ${moraleEffectRow("Command Effect", `${summary.commandEffect}s`, tooltip)}
+        ${moraleEffectRow("Unit Attack Speed", formatUnitAttackSpeed(summary.unitAttackSpeed), tooltip)}
       </div>
     </section>
   `;
 }
 
-function moraleEffectRow(label, value) {
+function moraleEffectRow(label, value, tooltip = "") {
   return `
-    <div class="morale-effect-row">
+    <div class="morale-effect-row ${tooltip ? "has-tooltip" : ""}">
       <span>${escapeHtml(label)}</span>
-      <strong>${escapeHtml(value)}</strong>
+      <span class="morale-value">
+        <strong>${escapeHtml(value)}</strong>
+        ${tooltip ? summaryTooltip(`${label} item modifiers`, tooltip) : ""}
+      </span>
     </div>
   `;
 }
@@ -2709,6 +2996,7 @@ async function loadLocalItems() {
     if (!response.ok || !body?.ok) {
       localItemCatalog = [];
       localItemShineSprites = {};
+      localItemSets = [];
       localItemCatalogError =
         body?.error === "Unknown API endpoint"
           ? "Item search needs the current desktop server. Close and reopen WBC3 Planner."
@@ -2721,6 +3009,7 @@ async function loadLocalItems() {
 
     localItemCatalog = Array.isArray(body.items) ? body.items : [];
     localItemShineSprites = body.shineSprites && typeof body.shineSprites === "object" ? body.shineSprites : {};
+    localItemSets = Array.isArray(body.sets) ? body.sets : [];
     localItemCatalogError = "";
     render();
   } catch {

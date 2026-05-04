@@ -7,6 +7,7 @@
   --panel: #17211f;
   --line: #33423e;
   --green: #83c8b6;
+  --modifier: #b6ff4a;
   --blue: #87bfdc;
   --gold: #d0a05a;
   --red: #ef8b8f;
@@ -37,6 +38,7 @@ html[data-theme="light"] {
   --panel: #ffffff;
   --line: #cfd9d6;
   --green: #244f45;
+  --modifier: #54a313;
   --blue: #285a75;
   --gold: #a56b2c;
   --red: #8b2f32;
@@ -945,7 +947,7 @@ input {
 
 .skill-row {
   display: grid;
-  grid-template-columns: minmax(150px, 0.9fr) minmax(190px, 1.1fr) 108px 50px;
+  grid-template-columns: minmax(150px, 0.9fr) minmax(190px, 1.1fr) 108px minmax(78px, auto);
   align-items: center;
   gap: 12px;
   border: 1px solid var(--line);
@@ -977,6 +979,23 @@ input {
   font-size: 0.78rem;
   font-weight: 700;
   line-height: 1.3;
+}
+
+.skill-level-output {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+  min-width: 0;
+  color: var(--blue);
+  font-weight: 900;
+}
+
+.skill-level-output small {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 800;
+  white-space: nowrap;
 }
 
 .strength-panel .stat-row,
@@ -1033,6 +1052,7 @@ input {
 
 .defense-parent .stat-icon,
 .defense-subrow .stat-icon,
+.derived-stat-row .stat-icon,
 .summary-item .stat-icon {
   width: 16px;
   height: 16px;
@@ -1080,7 +1100,7 @@ output {
   font-weight: 900;
 }
 
-.core-grid,
+.derived-stat-list,
 .summary-grid,
 .dexterity-grid {
   display: grid;
@@ -1101,6 +1121,10 @@ output {
 
 .dexterity-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.derived-stat-list {
+  grid-template-columns: 1fr;
 }
 
 .derived-section {
@@ -1130,7 +1154,15 @@ output {
   background: var(--panel-soft);
 }
 
-.morale-effects {
+.derived-stat-list .summary-item {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+}
+
+.morale-effects,
+.derived-stat-group {
   display: grid;
   gap: 8px;
   grid-column: 1 / -1;
@@ -1141,7 +1173,8 @@ output {
 }
 
 .morale-main,
-.morale-effect-row {
+.morale-effect-row,
+.derived-stat-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1154,20 +1187,36 @@ output {
   font-weight: 900;
 }
 
-.morale-effects-list {
+.morale-value,
+.defense-value,
+.derived-stat-value {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  min-width: 0;
+}
+
+.morale-effects-list,
+.derived-stat-group-list {
   display: grid;
   gap: 6px;
+}
+
+.morale-effects-list {
   border-top: 1px solid var(--line);
   padding-top: 8px;
 }
 
-.morale-effect-row span {
+.morale-effect-row span,
+.derived-stat-row .summary-label {
   color: var(--muted);
   font-size: 0.78rem;
   font-weight: 800;
 }
 
-.morale-effect-row strong {
+.morale-effect-row strong,
+.derived-stat-row strong {
   color: var(--ink);
   font-size: 0.86rem;
   font-weight: 900;
@@ -1203,25 +1252,44 @@ output {
   outline: none;
 }
 
-.summary-item.has-tooltip::after {
-  content: "";
-  position: absolute;
-  right: 10px;
-  top: 10px;
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  background: var(--blue);
-  opacity: 0.55;
+.summary-tooltip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  margin-left: 4px;
 }
 
-.summary-tooltip {
-  position: absolute;
-  z-index: 25;
-  left: 10px;
-  bottom: calc(100% + 8px);
-  width: max-content;
-  max-width: min(260px, calc(100vw - 48px));
+.summary-tooltip summary {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--control-bg);
+  color: var(--blue);
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 900;
+  line-height: 1;
+  list-style: none;
+}
+
+.summary-tooltip summary::-webkit-details-marker {
+  display: none;
+}
+
+.has-tooltip .summary-tooltip summary {
+  border-color: var(--modifier);
+  color: var(--modifier);
+}
+
+.summary-tooltip p {
+  position: fixed;
+  z-index: 90;
+  width: min(320px, calc(100vw - 48px));
+  margin: 0;
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 8px 10px;
@@ -1231,21 +1299,21 @@ output {
   font-weight: 800;
   line-height: 1.3;
   box-shadow: var(--menu-shadow);
-  opacity: 0;
-  pointer-events: none;
-  transform: translateY(4px);
-  transition: opacity 120ms ease, transform 120ms ease;
+  text-align: left;
+  white-space: pre-line;
+  visibility: hidden;
 }
 
-.summary-item.has-tooltip:hover .summary-tooltip,
-.summary-item.has-tooltip:focus .summary-tooltip,
-.summary-item.has-tooltip:focus-within .summary-tooltip {
-  opacity: 1;
-  transform: translateY(0);
+.summary-tooltip:not([open]) p {
+  display: none;
 }
 
-.summary-item.has-tooltip:focus {
-  box-shadow: inset 0 0 0 1px var(--blue);
+.summary-tooltip[open].is-positioned p {
+  visibility: visible;
+}
+
+.summary-tooltip[open] summary {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--modifier) 32%, transparent);
 }
 
 .defense-group {
@@ -1660,10 +1728,8 @@ output {
 }
 
 .item-description-tooltip p {
-  position: absolute;
-  z-index: 30;
-  right: 0;
-  bottom: calc(100% + 8px);
+  position: fixed;
+  z-index: 90;
   width: min(280px, calc(100vw - 48px));
   margin: 0;
   border: 1px solid var(--line);
@@ -1675,6 +1741,15 @@ output {
   font-size: 0.78rem;
   font-weight: 700;
   line-height: 1.3;
+  visibility: hidden;
+}
+
+.item-description-tooltip:not([open]) p {
+  display: none;
+}
+
+.item-description-tooltip[open].is-positioned p {
+  visibility: visible;
 }
 
 .item-equip-button {
@@ -1769,8 +1844,8 @@ output {
     overflow: visible;
   }
 
-  .strength-panel .core-grid,
-  .intelligence-panel .core-grid,
+  .strength-panel .derived-stat-list,
+  .intelligence-panel .derived-stat-list,
   .dexterity-panel .dexterity-grid,
   .charisma-panel .summary-grid {
     overflow-y: visible;
