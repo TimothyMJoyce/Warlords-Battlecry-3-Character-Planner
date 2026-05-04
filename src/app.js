@@ -313,11 +313,8 @@ function render() {
         </aside>
 
         <section class="panel strength-panel">
-          <div class="panel-heading">
-            <h2>Strength</h2>
-          </div>
           ${statAllocator("strength", startingStats, statValidation, pointBudget, summary)}
-          ${derivedStatsSection("Strength Stats", `
+          ${derivedStatsSection("", `
             ${derivedStatGroup([
               { label: "Life", value: summary.life, tooltip: statBreakdown(summary, "life") },
               { label: "Life Regen", value: formatRegen(summary.lifeRegen, "HP"), tooltip: statBreakdown(summary, "lifeRegen") },
@@ -328,11 +325,8 @@ function render() {
         </section>
 
         <section class="panel intelligence-panel">
-          <div class="panel-heading">
-            <h2>Intelligence</h2>
-          </div>
           ${statAllocator("intelligence", startingStats, statValidation, pointBudget, summary)}
-          ${derivedStatsSection("Intelligence Stats", `
+          ${derivedStatsSection("", `
             ${derivedStatGroup([
               { label: "Mana", value: summary.mana, tooltip: statBreakdown(summary, "mana") },
               { label: "Mana Regen", value: formatRegen(summary.manaRegen, "MP"), tooltip: statBreakdown(summary, "manaRegen") },
@@ -343,12 +337,9 @@ function render() {
         </section>
 
         <section class="panel dexterity-panel">
-          <div class="panel-heading">
-            <h2>Dexterity</h2>
-          </div>
           ${statAllocator("dexterity", startingStats, statValidation, pointBudget, summary)}
           <div class="dexterity-grid">
-            ${derivedStatsSection("Dexterity Stats", `
+            ${derivedStatsSection("", `
               ${derivedStatGroup([
                 { label: "Speed", value: summary.speed, tooltip: statBreakdown(summary, "speed") },
                 { label: "Attack Speed", value: formatAttackSpeed(summary.attackSpeed), tooltip: statBreakdown(summary, "attackSpeed") },
@@ -370,13 +361,10 @@ function render() {
         </section>
 
         <section class="panel charisma-panel">
-          <div class="panel-heading">
-            <h2>Charisma</h2>
-          </div>
           ${statAllocator("charisma", startingStats, statValidation, pointBudget, summary)}
           <div class="summary-grid">
             ${moraleEffectsSection(summary)}
-            ${derivedStatsSection("Charisma Stats", `
+            ${derivedStatsSection("", `
               ${derivedStatGroup([
                 { label: "Merchant", value: formatMerchant(summary.merchant), tooltip: statBreakdown(summary, "merchant") },
                 { label: "Command Radius", value: summary.commandRadius, tooltip: statBreakdown(summary, "commandRadius") },
@@ -2426,7 +2414,7 @@ function getSkillUnlockText(unlock) {
 function derivedStatsSection(title, content) {
   return `
     <section class="derived-section">
-      <h3>${escapeHtml(title)}</h3>
+      ${title ? `<h3>${escapeHtml(title)}</h3>` : ""}
       ${content}
     </section>
   `;
