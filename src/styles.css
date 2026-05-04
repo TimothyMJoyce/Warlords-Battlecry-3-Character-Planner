@@ -975,6 +975,10 @@ input {
   overflow-wrap: anywhere;
 }
 
+.skill-row.is-modified-skill {
+  border-color: color-mix(in srgb, var(--modifier) 45%, var(--line));
+}
+
 .skill-info small {
   color: var(--muted);
   font-size: 0.74rem;
@@ -994,6 +998,8 @@ input {
   align-items: center;
   justify-content: flex-end;
   gap: 5px;
+  border-radius: 6px;
+  padding: 3px 4px;
   min-width: 0;
   color: var(--blue);
   font-weight: 900;
@@ -1004,6 +1010,19 @@ input {
   font-size: 0.68rem;
   font-weight: 800;
   white-space: nowrap;
+}
+
+.skill-level-output.has-skill-modifier-tooltip {
+  color: var(--modifier);
+}
+
+.skill-modifier-badge {
+  border: 1px solid color-mix(in srgb, var(--modifier) 42%, transparent);
+  border-radius: 999px;
+  padding: 2px 5px;
+  color: var(--modifier);
+  background: color-mix(in srgb, var(--modifier) 12%, transparent);
+  line-height: 1;
 }
 
 .strength-panel .stat-row,

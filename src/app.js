@@ -1375,7 +1375,7 @@ function skillRow(unlock, skillValidation, pointBudget, effects = [], summary = 
   const locked = !unlock.available ? "is-locked" : "";
   const hasEffects = effects.length ? "has-effects" : "";
   const itemTooltip = skillItemBreakdown(summary, unlock.skillId);
-  const hasItemModifier = itemTooltip ? "has-tooltip" : "";
+  const hasItemModifier = itemTooltip ? "is-modified-skill" : "";
   const effectiveLevel = getEffectiveSkillLevel(summary, unlock.skillId, unlock.currentLevel);
   const maxed = unlock.maxLevel !== Infinity && unlock.currentLevel >= unlock.maxLevel;
   const canAdd = unlock.available && !unlock.passive && !maxed && canSpendSkill(skillValidation, pointBudget);
@@ -1412,12 +1412,13 @@ function getEffectiveSkillLevel(summary, skillId, fallbackLevel = 0) {
 function skillLevelOutput(baseLevel, effectiveLevel, tooltip, skillName) {
   const hasLevelBonus = effectiveLevel !== baseLevel;
   const baseMarkup = hasLevelBonus ? `<small>base ${escapeHtml(baseLevel)}</small>` : "";
-  const tooltipMarkup = tooltip ? summaryTooltip(`${skillName} item modifiers`, tooltip) : "";
+  const tooltipAttributes = tooltip ? ` tabindex="0" data-stat-tooltip="${escapeHtml(tooltip)}"` : "";
+  const modifierMarkup = tooltip ? `<small class="skill-modifier-badge">modified</small>` : "";
   return `
-    <div class="skill-level-output ${tooltip ? "has-tooltip" : ""}">
+    <div class="skill-level-output ${tooltip ? "has-stat-hover-tooltip has-skill-modifier-tooltip" : ""}"${tooltipAttributes}>
       <strong>${escapeHtml(effectiveLevel)}</strong>
       ${baseMarkup}
-      ${tooltipMarkup}
+      ${modifierMarkup}
     </div>
   `;
 }
