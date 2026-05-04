@@ -628,6 +628,104 @@ function bindExclusiveTopbarMenus() {
       }
     });
   }
+  bindTopbarKeyboardNavigation(menus);
+}
+
+function bindTopbarKeyboardNavigation(menus) {
+  const topbarControls = Array.from(document.querySelectorAll(".top-actions > details > summary, .top-actions > button"));
+
+  for (const control of topbarControls) {
+    control.addEventListener("keydown", (event) => {
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      event.preventDefault();
+      const direction = event.key === "ArrowRight" ? 1 : -1;
+      focusRelativeTopbarControl(topbarControls, control, direction);
+    });
+  }
+
+  for (const menu of menus) {
+    const summary = menu.querySelector("summary");
+    const panel = getTopbarMenuPanel(menu);
+
+    summary?.addEventListener("keydown", (event) => {
+      if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+      event.preventDefault();
+      openTopbarMenu(menu, menus);
+      focusTopbarMenuItem(menu, event.key === "ArrowDown" ? "first" : "last");
+    });
+
+    panel?.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeTopbarMenu(menu);
+        return;
+      }
+
+      if (isTextEditingControl(event.target)) return;
+
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        focusRelativeTopbarMenuItem(menu, event.target, event.key === "ArrowDown" ? 1 : -1);
+      } else if (event.key === "Home") {
+        event.preventDefault();
+        focusTopbarMenuItem(menu, "first");
+      } else if (event.key === "End") {
+        event.preventDefault();
+        focusTopbarMenuItem(menu, "last");
+      }
+    });
+  }
+}
+
+function focusRelativeTopbarControl(controls, currentControl, direction) {
+  if (!controls.length) return;
+  const currentIndex = controls.indexOf(currentControl);
+  const nextIndex = (currentIndex + direction + controls.length) % controls.length;
+  controls[nextIndex]?.focus();
+}
+
+function openTopbarMenu(menu, menus) {
+  for (const otherMenu of menus) {
+    if (otherMenu !== menu) otherMenu.open = false;
+  }
+  menu.open = true;
+}
+
+function closeTopbarMenu(menu) {
+  menu.open = false;
+  menu.querySelector("summary")?.focus();
+}
+
+function focusTopbarMenuItem(menu, position) {
+  const items = getFocusableTopbarMenuItems(menu);
+  const item = position === "last" ? items.at(-1) : items[0];
+  item?.focus();
+}
+
+function focusRelativeTopbarMenuItem(menu, currentTarget, direction) {
+  const items = getFocusableTopbarMenuItems(menu);
+  if (!items.length) return;
+  const currentIndex = items.indexOf(currentTarget);
+  const fallbackIndex = direction > 0 ? -1 : 0;
+  const nextIndex = ((currentIndex >= 0 ? currentIndex : fallbackIndex) + direction + items.length) % items.length;
+  items[nextIndex]?.focus();
+}
+
+function getFocusableTopbarMenuItems(menu) {
+  const panel = getTopbarMenuPanel(menu);
+  if (!panel) return [];
+  return Array.from(panel.querySelectorAll("button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href]"))
+    .filter((item) => item.offsetParent !== null);
+}
+
+function getTopbarMenuPanel(menu) {
+  return menu.querySelector(".rules-menu-panel, .settings-panel, .saved-menu-panel");
+}
+
+function isTextEditingControl(target) {
+  const element = target instanceof HTMLElement ? target : null;
+  if (!element) return false;
+  return element.matches("input:not([type='button']):not([type='submit']):not([type='reset']), textarea, [contenteditable='true']");
 }
 
 function bindExclusiveTooltips() {
