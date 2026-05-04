@@ -542,9 +542,39 @@ const invalidSkills = validateSkillAllocation({
 assert.equal(invalidSkills.valid, false);
 assert.match(invalidSkills.warnings.join(" "), /level 5/);
 
+const lockedLevelFiveSkill = getAvailableSkillUnlocks({ ...baseBuild, level: 5 }).find(
+  (skill) => skill.skillId === "leadership",
+);
+assert.equal(lockedLevelFiveSkill.available, false);
+assert.equal(lockedLevelFiveSkill.priorSkillPoints, 1);
+assert.equal(lockedLevelFiveSkill.requiredPriorSkillPoints, 4);
+
+const levelFiveSkillWithoutEarlierPoints = validateSkillAllocation({
+  ...baseBuild,
+  level: 5,
+  skillAllocation: { leadership: 1 },
+});
+assert.equal(levelFiveSkillWithoutEarlierPoints.valid, false);
+assert.match(levelFiveSkillWithoutEarlierPoints.warnings.join(" "), /1\/4/);
+
+const unlockedLevelFiveSkill = getAvailableSkillUnlocks({
+  ...baseBuild,
+  level: 5,
+  skillAllocation: { ferocity: 3 },
+}).find((skill) => skill.skillId === "leadership");
+assert.equal(unlockedLevelFiveSkill.available, true);
+assert.equal(unlockedLevelFiveSkill.priorSkillPoints, 4);
+
+const levelFiveSkillWithEarlierPoints = validateSkillAllocation({
+  ...baseBuild,
+  level: 5,
+  skillAllocation: { ferocity: 3, leadership: 1 },
+});
+assert.equal(levelFiveSkillWithEarlierPoints.valid, true);
+
 const lockedLateSkill = getAvailableSkillUnlocks({ ...baseBuild, level: 50 }).find((skill) => skill.skillId === "quarrying");
 assert.equal(lockedLateSkill.available, false);
-assert.equal(lockedLateSkill.priorSkillPoints, 5);
+assert.equal(lockedLateSkill.priorSkillPoints, 1);
 assert.equal(lockedLateSkill.requiredPriorSkillPoints, 29);
 assert.equal(lockedLateSkill.maxLevel, 21);
 
@@ -555,12 +585,12 @@ const lateSkillWithoutEarlierPoints = validateSkillAllocation({
 });
 assert.equal(lateSkillWithoutEarlierPoints.valid, false);
 assert.match(lateSkillWithoutEarlierPoints.warnings.join(" "), /earlier skill tiers/);
-assert.match(lateSkillWithoutEarlierPoints.warnings.join(" "), /5\/29/);
+assert.match(lateSkillWithoutEarlierPoints.warnings.join(" "), /1\/29/);
 
 const unlockedLateSkill = getAvailableSkillUnlocks({
   ...baseBuild,
   level: 50,
-  skillAllocation: { ferocity: 24 },
+  skillAllocation: { ferocity: 28 },
 }).find((skill) => skill.skillId === "quarrying");
 assert.equal(unlockedLateSkill.available, true);
 assert.equal(unlockedLateSkill.priorSkillPoints, 29);
@@ -568,7 +598,7 @@ assert.equal(unlockedLateSkill.priorSkillPoints, 29);
 const lateSkillWithEarlierPoints = validateSkillAllocation({
   ...baseBuild,
   level: 50,
-  skillAllocation: { ferocity: 24, quarrying: 1 },
+  skillAllocation: { ferocity: 28, quarrying: 1 },
 });
 assert.equal(lateSkillWithEarlierPoints.valid, true);
 

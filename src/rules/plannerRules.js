@@ -1107,10 +1107,13 @@ function getSkillPrerequisiteState(unlock, unlocks, allocation) {
 }
 
 function getPriorSkillPointTally(targetUnlock, unlocks, allocation) {
-  return unlocks.reduce((total, unlock) => {
+  const totalStartingLevels = unlocks.reduce((total, unlock) => total + unlock.startingLevel, 0);
+  const priorSkillLevels = unlocks.reduce((total, unlock) => {
     if (unlock.availableAt >= targetUnlock.availableAt) return total;
     return total + unlock.startingLevel + (allocation[unlock.skillId] ?? 0);
-  }, 1);
+  }, 0);
+
+  return Math.max(0, 1 - totalStartingLevels + priorSkillLevels);
 }
 
 function formatSkillName(skillId) {
