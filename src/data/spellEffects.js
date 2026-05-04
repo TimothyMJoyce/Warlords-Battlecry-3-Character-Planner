@@ -225,6 +225,164 @@ const spellPreviewGroupRows = [
   ],
 ];
 
+const defaultSpellScalingSummary = "No direct rank scaling found beyond cast rank and chance.";
+
+const spellScalingSummaries = {
+  healSelf: "Heal = 50 x R, plus Elcor's Aura if active.",
+  cure: "Cures; heal = 10 x R. Radius uses command radius.",
+  blessing: "Morale = 1 + R. Duration scales with R.",
+  whiteWard: "Resistance = 5 x R. Duration scales with R; radius uses command radius.",
+  healGroup: "Ally heal = 50 x R, plus Elcor's Aura if active. Radius uses command radius.",
+  invigorate: "Speed = min(5, 1 + R). Duration scales with R; radius uses command radius.",
+  sunshine: "Sets sunshine; evil damage = 30 + 20 x R in command radius.",
+  majorHealing: "Heal = 100 x R, plus Elcor's Aura if active. Very large radius.",
+  lifeWard: "Death ward effect does not grow; duration scales with R.",
+  resurrection: "Resurrection radius scales with R; at R3+ it targets allies only.",
+
+  summonQuasit: "Summons about R quasits; XP = +20 x (R - 1). Duration scales with R.",
+  circleOfPower: "Creates a circle; duration scales with R.",
+  phantomSteed: "Speed = 1 + R; armor/resistance = 5 x R. Duration scales with R.",
+  blink: "Teleport range uses command radius; no direct rank scaling.",
+  summonImp: "Summons R imps; XP = +20 x (R - 1). Duration scales with R.",
+  eyeOfOros: "Summons R + 1 eyes; XP = +20 x (R - 1). Duration scales with R.",
+  homePortal: "Portal effect has no direct rank scaling.",
+  soulHarvest: "Summons R soul units; XP = +20 x (R - 1). Duration scales with R.",
+  banish: "Banishes up to level 3 + 2 x R. Radius uses command radius.",
+  daemonGate: "Summons 1 + floor((R - 1) / 3) daemons; XP = +50 x (R - 1).",
+
+  summonSprite: "Summons 1 sprite; XP = +20 x (R - 1). Duration scales with R.",
+  gemberry: "Heal = 25 x R; R2+ also cures. Radius uses command radius.",
+  entangle: "Speed penalty = 2 + 2 x R. Duration scales with R; radius uses command radius.",
+  shillelagh: "Combat bonus = 5 x R. Duration scales with R.",
+  summonUnicorn: "Summons 1 unicorn; XP = +20 x (R - 1). Duration scales with R.",
+  wallOfThorns: "Wall duration = 600s x R.",
+  callLightning: "Damage = 40 + 20 x R; targets add 2 x R, capped at 24. Rain adds 10% damage.",
+  summonTreant: "Summons 1 treant; XP = +20 x (R - 1). Duration scales with R.",
+  changeWeather: "Weather type changes; no direct rank scaling.",
+  elementalism: "Summons 1 + floor((R - 1) / 2) elementals; XP = +50 x (R - 1).",
+
+  shadowform: "Speed = R; armor/resistance = 5 x R. Duration scales with R.",
+  scare: "Affects up to level 4 + 2 x R; radius scales with R.",
+  lightDarkness: "Toggles light/dark weather state; no direct rank scaling.",
+  awe: "Affects up to level 4 + 2 x R; radius scales with R.",
+  spectralHorde: "Summons 4 + 2 x R illusion troops. Duration scales with R.",
+  dragonFear: "Summons 1 illusion dragon. Duration scales with R.",
+  invisibility: "Duration scales with R.",
+  callShadow: "Summons 1 + floor((R - 1) / 2) shadows; XP = +20 x (R - 1).",
+  mutate: "Mutates units up to level R + 1. Radius uses command radius.",
+  transform: "Targets up to min(15, 3 x R); transformation roll improves with R.",
+
+  raiseSkeleton: "Summons 1 + R skeletons; XP = +5 x (R - 1). Duration scales with R.",
+  raiseZombie: "Summons about R zombies; XP = +5 x (R - 1). Duration scales with R.",
+  blackPortal: "Creates a portal; duration scales with R.",
+  raiseWight: "Summons 1 + floor((R - 1) / 2) wights; XP = +20 x (R - 1).",
+  vampirism: "Vampirism = R + 1. Duration and radius scale with R.",
+  darkstorm: "Darkstorm weather effect has no direct rank scaling.",
+  stripFlesh: "Affects targets up to level R + 1. Radius uses command radius.",
+  callTheDead: "Raises corpses in command radius; XP = +20 x (R - 1), targets capped at 24.",
+  ringOfIceNecromancy: "Ice damage = 25 + 25 x R in fixed radius.",
+  raiseChampion: "Shadows = R + 1, or elite undead = 1 + floor((R - 1) / 3); XP = +20 x (R - 1).",
+
+  handOfFlame: "Fire damage = 10 + 10 x R. Rain reduces damage by 20%.",
+  soulFlame: "XP gain = 5 + 5 x R; max gain = 10 x R. Radius uses command radius.",
+  cauterize: "Heal = 20 x R. Radius uses command radius.",
+  resistFire: "Fire resistance = 25 x R. Duration scales with R; radius uses command radius.",
+  ringOfFire: "Fire damage = 25 + 25 x R in fixed radius. Rain uses a reduced formula.",
+  firebreath: "Breath damage = 5 + 5 x R. Duration scales with R; radius uses command radius.",
+  berserker: "Combat = 4 + R; speed = 3 + 2 x R. Duration scales with R.",
+  pillarOfFire: "Fire damage = 60 + 40 x R in fixed radius. Rain uses a reduced formula.",
+  fireElemental: "Summons 1 + floor((R - 1) / 2) elementals; XP = +50 x (R - 1).",
+  armageddon: "Fire damage = 50 + 50 x R in command radius. Rain halves damage.",
+
+  createItem: "Item quality unlocks at R1/R2/R3/R4: lesser, major, artifact, set.",
+  transmute: "Success chance = min(100%, 45 + 5 x R).",
+  charm: "Merchant bonus = 2 x R. Duration scales with R.",
+  stoneGolemAlchemy: "Summons 1 stone golem; XP = +20 x (R - 1). Duration scales with R.",
+  brewPotion: "Adds R healing potions.",
+  acquire: "Search/conversion radius scales with R, then is halved.",
+  summonGuardianAlchemy: "Guardian tier improves at R2/R3+; duration = 8 + 2 x R minutes.",
+  disjunctionAlchemy: "Disjunction duration scales with R.",
+  bronzeGolem: "Summons 1 bronze golem; XP = +20 x (R - 1). Duration scales with R.",
+  spellforge: "Doubles item-power effects; duration scales with R.",
+
+  stoneskin: "Armor +10. Duration scales with R.",
+  gemOfWisdom: "Next spell chance bonus = 10 + 10 x R.",
+  dig: "Dig/building bonus = 10 + 10 x R. Duration scales with R.",
+  earthpower: "Heal = 200 x R. Radius scales with R.",
+  resistMagic: "Magic resistance = 25 x R. Duration scales with R.",
+  doomstones: "Crushing damage = 10 + 20 x R. Radius uses command radius.",
+  summonGuardianRunes: "Guardian tier improves at R2/R3+; duration scales with R.",
+  resistMissile: "Missile protection effect does not grow; duration scales with R.",
+  runeItem: "Creates the chosen rune item; no direct rank scaling.",
+  stonecall: "Summons 1 + floor((R - 1) / 2) earth elementals; XP = +50 x (R - 1).",
+
+  handOfIce: "Ice damage = 15 + 10 x R. Radius uses command radius.",
+  storm: "Weather improves at R2+; otherwise no numeric rank scaling.",
+  iceArmor: "Armor = 5 x R. Duration scales with R.",
+  calm: "Calm radius scales with R.",
+  ringOfIce: "Ice damage = 25 + 25 x R in fixed radius.",
+  freeze: "Speed penalty = 1 + R. Duration scales with R; radius uses command radius.",
+  wallOfIce: "Wall duration = 600s x R.",
+  iceFloe: "Ice aura damage = 5 + 15 x R. Duration scales with R.",
+  freezeMagic: "Magic-freeze effect duration scales with R.",
+  iceStorm: "Ice damage = 50 + 50 x R. Radius uses command radius.",
+
+  morphCombat: "Random combat change range grows as 1 + 6 x R.",
+  morphSpeed: "Random speed change range grows as 1 + 6 x R.",
+  morphHealth: "Random health change range grows as 10 x (1 + 6 x R).",
+  morphDamage: "Random damage change range grows as 1 + 6 x R.",
+  morphTower: "Random tower stat changes use 1 + 6 x R; health change is x10.",
+  drainMana: "Drains mana; no direct rank scaling in this wrapper.",
+  morphResources: "Success chance = min(100%, 45 + 5 x R + random -10..10).",
+  learnSpell: "Temporarily learned spell level = R.",
+  wildfire: "Damage = 20 + 30 x R. Damage type varies by roll.",
+  chaosPlague: "HP disease percent = max(5, 53 - 3 x R); higher rank is harsher.",
+
+  immunity: "Immunity effect does not grow; duration scales with R.",
+  poisonCloud: "Poison radius scales with R.",
+  summonWasp: "Summons 1 + 2 x (R - 1) wasps; XP = +20 x (R - 1).",
+  antidote: "Cure radius scales with R.",
+  venomTouch: "Venom effect does not grow; duration scales with R.",
+  poisonGate: "Poison gate duration scales with R.",
+  sprayPoison: "Piercing damage = 30 + 10 x R. Radius uses command radius.",
+  guardianNaga: "Summons 1 naga; XP = +20 x (R - 1). Duration scales with R.",
+  rot: "Affects targets up to level R + 1; radius scales with R.",
+  callOfKargoth: "Summons 8 units; XP = +20 x (R - 1). Duration scales with R.",
+
+  elementalLore: "Elemental lore +10. Duration scales with R.",
+  defenseLore: "Defense lore +10. Duration scales with R.",
+  seeInvisible: "See Invisible effect does not grow; duration scales with R.",
+  telepathy: "Telepathy effect = 10 x R. Duration scales with R.",
+  banishDivination: "Banishes up to level 3 + 2 x R. Radius uses command radius.",
+  comprehension: "Comprehension = min(50%, 20 + 5 x R). Duration scales with R.",
+  summonSage: "Summons 1 sage; XP = +20 x (R - 1). Duration scales with R.",
+  mindLeech: "Mind leech effect is fixed; duration scales with R and uses command radius.",
+  trueSight: "Vision bonus = R.",
+  psychicBlast: "Stun duration scales with R. Radius uses command radius.",
+
+  concentration: "Spellcasting bonus = 15 + 5 x R. Duration scales with R.",
+  command: "Spell range bonus = 25 x R. Duration scales with R.",
+  enervate: "Mana regen bonus = 75 + 25 x R. Duration scales with R.",
+  extend: "Spell duration bonus = 100%. Buff duration scales with R.",
+  manaFlow: "Mana discount = 25%. Buff duration scales with R.",
+  corruption: "Corruption = 20 + 10 x R. Duration scales with R.",
+  dispel: "Dispel radius scales with R.",
+  manaLeech: "Mana leech = 4 + R. Duration scales with R.",
+  empower: "Empower bonus = 25 + 25 x R. Duration scales with R.",
+  destruction: "Damage = caster current HP - 1. Radius scales with R.",
+
+  vigor: "Speed = 1 + 2 x R; combat = R - 1. Duration scales with R.",
+  age: "Speed penalty = -(3 + R). Duration scales with R; radius uses command radius.",
+  life: "Max life +40 + 20 x R; healing +60 + 20 x R. Duration scales with R.",
+  foresight: "Combat bonus = 2 + 2 x R. Duration scales with R; radius uses command radius.",
+  springtime: "Speed = 3 + R; combat = 2 + R; regen = 3 + 3 x R. Duration scales with R.",
+  decrepify: "Speed penalty = -(2 + 2 x R); combat penalty = -(1 + R); damage = 4.5 x R.",
+  wisdomOfAge: "Production bonus = 10 + 10 x R. Duration scales with R.",
+  whispersOfTime: "Summons min(R + 1, 24) wraiths; XP = 20 x R. Duration is fixed.",
+  overwork: "Mine work effect = R. Duration scales with R.",
+  breathOfDying: "Affects targets up to level R + 3. Radius uses command radius.",
+};
+
 export const spellPreviewGroups = spellPreviewGroupRows.map(([id, label, spells], groupIndex) => ({
   id,
   label,
@@ -235,14 +393,32 @@ export const spellPreviewGroups = spellPreviewGroupRows.map(([id, label, spells]
     sphereLabel: label,
     level: index + 1,
     gameTextIndex: groupIndex * 10 + index,
+    scaling: spellScalingSummaries[spellId] ?? defaultSpellScalingSummary,
     effects: normalizeEffects(effects),
   })),
 }));
 
 export const spellPreviewSpells = spellPreviewGroups.flatMap((group) => group.spells);
 export const defaultSpellPreviewId = spellPreviewSpells[0].id;
+export const spellScalingSummaryCount = Object.keys(spellScalingSummaries).length;
 
 const spellPreviewSpellsById = Object.fromEntries(spellPreviewSpells.map((spell) => [spell.id, spell]));
+
+export function getSpellRankForMagicSkill(skillLevel, spellLevel) {
+  const skill = Math.max(0, Math.trunc(Number(skillLevel) || 0));
+  const spellIndex = Math.max(0, Math.trunc(Number(spellLevel) || 1) - 1);
+  if (skill <= spellIndex) return 0;
+
+  let rank = Math.trunc(skill / 10) + 1;
+  if (skill % 10 <= spellIndex) rank -= 1;
+  return Math.max(0, rank);
+}
+
+export function getSpellRankThreshold(spellLevel, rank) {
+  const level = Math.max(1, Math.trunc(Number(spellLevel) || 1));
+  const targetRank = Math.max(1, Math.trunc(Number(rank) || 1));
+  return level + (targetRank - 1) * 10;
+}
 
 export function getSpellPreview(spellId) {
   return spellPreviewSpellsById[spellId] ?? spellPreviewSpellsById[defaultSpellPreviewId];

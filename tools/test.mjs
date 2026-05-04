@@ -24,6 +24,9 @@ import {
   defaultSpellPreviewId,
   getSpellPreview,
   getSpellPreviewEffectIds,
+  getSpellRankForMagicSkill,
+  getSpellRankThreshold,
+  spellScalingSummaryCount,
   spellPreviewSpells,
 } from "../src/data/spellEffects.js";
 import { readAvatarAnimationAsset, readEffectAnimationAsset, readSpriteAnimationAsset } from "./wbc3-animation-reader.mjs";
@@ -138,11 +141,24 @@ assert.deepEqual(
 );
 assert.equal(defaultSpellPreviewId, "healSelf");
 assert.equal(spellPreviewSpells.length, 140);
+assert.equal(spellScalingSummaryCount, 140);
+assert.equal(spellPreviewSpells.every((spell) => spell.scaling && !spell.scaling.includes("No direct rank scaling")), true);
 assert.equal(getSpellPreview("destruction").label, "Destruction");
+assert.equal(getSpellPreview("earthpower").scaling, "Heal = 200 x R. Radius scales with R.");
+assert.equal(getSpellPreview("empower").scaling, "Empower bonus = 25 + 25 x R. Duration scales with R.");
 assert.deepEqual(getSpellPreviewEffectIds(getSpellPreview("destruction")), ["EARC", "EX01"]);
 assert.equal(getSpellPreview("not-real").id, "healSelf");
 assert.equal(getSpellPreview("healSelf").gameTextIndex, 0);
 assert.equal(getSpellPreview("breathOfDying").gameTextIndex, 139);
+assert.equal(getSpellRankForMagicSkill(0, 1), 0);
+assert.equal(getSpellRankForMagicSkill(1, 1), 1);
+assert.equal(getSpellRankForMagicSkill(1, 2), 0);
+assert.equal(getSpellRankForMagicSkill(10, 10), 1);
+assert.equal(getSpellRankForMagicSkill(11, 1), 2);
+assert.equal(getSpellRankForMagicSkill(11, 2), 1);
+assert.equal(getSpellRankForMagicSkill(20, 10), 2);
+assert.equal(getSpellRankForMagicSkill(21, 1), 3);
+assert.equal(getSpellRankThreshold(10, 3), 30);
 assert.deepEqual(parseSpellTextCatalog("[SPELL_NAME_00]\tHeal Self\n[SPELL_DESC_00]\tHeals the caster"), [
   {
     index: 0,
@@ -303,6 +319,8 @@ assert.doesNotMatch(appSource, /data-preview-spell-id/);
 assert.doesNotMatch(appSource, /spell-preview-button/);
 assert.match(appSource, /data-hero-rotate/);
 assert.match(appSource, /spellSpheresPanel\(summary\)/);
+assert.match(appSource, /spellScalingTooltip/);
+assert.match(appSource, /Scale: \$\{spell\.scaling\}/);
 assert.match(appSource, /itemsPanel\(\)/);
 assert.match(appSource, /item-icon/);
 assert.match(appSource, /item-shine/);

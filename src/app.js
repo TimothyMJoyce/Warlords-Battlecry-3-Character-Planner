@@ -21,6 +21,8 @@ import {
 } from "./data/portraits.js";
 import {
   defaultSpellPreviewId,
+  getSpellRankForMagicSkill,
+  getSpellRankThreshold,
   getSpellPreview,
   getSpellPreviewEffectIds,
   normalizeSpellPreviewId,
@@ -1460,19 +1462,30 @@ function spellSphereTab(sphere) {
 }
 
 function spellSphereCard(sphere) {
+  const summaryText = sphere.spellCount
+    ? `${sphere.spellCount} known / best rank ${sphere.maxRank}`
+    : "No spells known";
   return `
     <article class="spell-sphere-card">
+      <div class="spell-sphere-summary">
+        <strong>${escapeHtml(sphere.skillLabel)}</strong>
+        <span>${escapeHtml(summaryText)}</span>
+      </div>
       <div class="spell-list">
-        ${sphere.group.spells.map(spellRow).join("")}
+        ${sphere.spells.map(spellRow).join("")}
       </div>
     </article>
   `;
 }
 
 function spellRow(spell) {
+  const tooltip = spellScalingTooltip(spell);
   return `
-    <article class="spell-row">
-      <strong>${escapeHtml(getSpellDisplayName(spell))}</strong>
+    <article class="spell-row ${spell.isKnown ? "is-known" : "is-locked"} has-stat-hover-tooltip" data-stat-tooltip="${escapeHtml(tooltip)}" tabindex="0">
+      <div class="spell-row-title">
+        <strong>${escapeHtml(getSpellDisplayName(spell))}</strong>
+        <span class="spell-rank-badge">${escapeHtml(getSpellRankLabel(spell))}</span>
+      </div>
       <p>${escapeHtml(getSpellDescription(spell))}</p>
     </article>
   `;
@@ -1480,18 +1493,35 @@ function spellRow(spell) {
 
 function getSpellSpheres(summary) {
   const skillLevels = summary.skillLevels ?? {};
+  const spellcasting = Math.trunc(Number(summary.spellcasting) || 0);
   return spellPreviewGroups
     .map((group) => {
       const skillId = spellSphereSkillIds[group.id];
       const skillLevel = Math.max(0, Math.trunc(Number(skillLevels[skillId]) || 0));
-      const spellCount = getKnownSpellCount(skillLevel);
       const skillLabel = getSkillDisplayName(skillId, skillsById[skillId]?.displayName ?? group.label);
+      const spells = group.spells.map((spell) => {
+        const currentRank = getSpellRankForMagicSkill(skillLevel, spell.level);
+        return {
+          ...spell,
+          skillId,
+          skillLabel,
+          skillLevel,
+          spellcasting,
+          currentRank,
+          isKnown: currentRank > 0,
+        };
+      });
+      const spellCount = spells.filter((spell) => spell.isKnown).length;
+      const maxRank = spells.reduce((highest, spell) => Math.max(highest, spell.currentRank), 0);
       return {
         group,
+        spells,
         skillId,
         skillLabel,
         skillLevel,
         spellCount,
+        maxRank,
+        spellcasting,
       };
     });
 }
@@ -1519,6 +1549,31 @@ function getSpellDisplayName(spell) {
 
 function getSpellDescription(spell) {
   return localSpellTextByIndex.get(spell.gameTextIndex)?.description || "Game description text is not available.";
+}
+
+function getSpellRankLabel(spell) {
+  if (spell.currentRank > 0) return `Rank ${spell.currentRank}`;
+  return `Needs ${spell.skillLabel} ${spell.level}`;
+}
+
+function spellScalingTooltip(spell) {
+  const displayName = getSpellDisplayName(spell);
+  const nextRank = spell.currentRank > 0 ? spell.currentRank + 1 : 1;
+  const rankLine = spell.currentRank > 0
+    ? `${displayName}: R${spell.currentRank}, cast ${getSpellCastChance(spell.currentRank, spell.spellcasting)}% before temporary boosts.`
+    : `${displayName}: locked until ${spell.skillLabel} ${spell.level}.`;
+  const chanceLine = spell.currentRank > 0
+    ? "Fallback: lower ranks get +50% chance each."
+    : `First-rank cast chance: ${getSpellCastChance(1, spell.spellcasting)}% before temporary boosts.`;
+  const nextRankLine = `${spell.currentRank > 0 ? "Next R" + nextRank : "First rank"}: ${spell.skillLabel} ${getSpellRankThreshold(spell.level, nextRank)}.`;
+  const effectLine = `Scale: ${spell.scaling}`;
+  return [rankLine, chanceLine, nextRankLine, effectLine].join("\n");
+}
+
+function getSpellCastChance(rank, spellcasting) {
+  const castRank = Math.max(1, Math.trunc(Number(rank) || 1));
+  const spellcastingBonus = Math.trunc(Number(spellcasting) || 0);
+  return Math.max(0, Math.min(100, 50 - (castRank - 1) * 50 + spellcastingBonus));
 }
 
 function getSkillDisplayName(skillId, fallback) {

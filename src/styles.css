@@ -1469,6 +1469,22 @@ output {
   background: var(--control-bg);
 }
 
+.spell-sphere-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.spell-sphere-summary span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  text-align: right;
+}
+
 .spell-sphere-tabs {
   display: flex;
   flex-wrap: wrap;
@@ -1522,9 +1538,41 @@ output {
   background: var(--panel-soft);
 }
 
+.spell-row.is-known {
+  border-color: color-mix(in srgb, var(--green) 30%, var(--line));
+}
+
+.spell-row.is-locked {
+  opacity: 0.64;
+}
+
+.spell-row-title {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
 .spell-row strong {
   color: var(--green);
   font-size: 0.84rem;
+}
+
+.spell-rank-badge {
+  justify-self: start;
+  max-width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 7px;
+  background: var(--control-bg);
+  color: var(--text);
+  font-size: 0.68rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.spell-row.is-known .spell-rank-badge {
+  border-color: color-mix(in srgb, var(--gold) 55%, var(--line));
+  color: var(--gold);
 }
 
 .spell-row p {
