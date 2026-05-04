@@ -432,10 +432,10 @@ html[data-theme="light"] .theme-icon::after {
 
 .builder-grid {
   display: grid;
-  grid-template-columns: 280px repeat(2, minmax(300px, 420px));
+  grid-template-columns: 280px repeat(2, minmax(300px, 470px));
   grid-template-areas:
-    "identity strength dexterity"
-    "identity intelligence charisma"
+    "identity strength intelligence"
+    "identity dexterity charisma"
     "skills skills skills"
     "spells spells spells"
     "items items items";
@@ -489,11 +489,10 @@ html[data-theme="light"] .theme-icon::after {
 .dexterity-panel,
 .intelligence-panel,
 .charisma-panel {
-  aspect-ratio: 1 / 1;
   display: flex;
   flex-direction: column;
   min-height: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .panel-heading {
@@ -1892,11 +1891,11 @@ output {
 
 @media (max-width: 1320px) {
   .builder-grid {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     grid-template-areas:
       "identity identity"
-      "strength dexterity"
-      "intelligence charisma"
+      "strength intelligence"
+      "dexterity charisma"
       "skills skills"
       "spells spells"
       "items items";
