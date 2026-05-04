@@ -318,7 +318,7 @@ function render() {
           ${derivedStatsSection("", `
             ${derivedStatGroup([
               { label: "Life", value: summary.life, tooltip: statBreakdown(summary, "life") },
-              { label: "Life Regen", value: formatRegen(summary.lifeRegen, "HP"), tooltip: statBreakdown(summary, "lifeRegen") },
+              { label: "Life Regeneration", value: formatRegen(summary.lifeRegen, "HP"), tooltip: statBreakdown(summary, "lifeRegen") },
               { label: "Combat", value: summary.combat, tooltip: statBreakdown(summary, "combat") },
               { label: "Damage", value: `${summary.damage} ${summary.damageType}`, tooltip: statBreakdown(summary, "damage") },
             ])}
@@ -330,7 +330,7 @@ function render() {
           ${derivedStatsSection("", `
             ${derivedStatGroup([
               { label: "Mana", value: summary.mana, tooltip: statBreakdown(summary, "mana") },
-              { label: "Mana Regen", value: formatRegen(summary.manaRegen, "MP"), tooltip: statBreakdown(summary, "manaRegen") },
+              { label: "Mana Regeneration", value: formatRegen(summary.manaRegen, "MP"), tooltip: statBreakdown(summary, "manaRegen") },
               { label: "Spellcasting", value: formatPercentBonus(summary.spellcasting), tooltip: statBreakdown(summary, "spellcasting") },
               { label: "Initial Troop XP", value: formatSignedValue(summary.initialTroopXp), tooltip: statBreakdown(summary, "initialTroopXp") },
             ])}
@@ -2525,10 +2525,10 @@ const statBreakdownLabels = {
   fire: "Fire",
   initialTroopXp: "Initial Troop XP",
   life: "Life",
-  lifeRegen: "Life Regen",
+  lifeRegen: "Life Regeneration",
   magic: "Magic",
   mana: "Mana",
-  manaRegen: "Mana Regen",
+  manaRegen: "Mana Regeneration",
   merchant: "Merchant",
   morale: "Morale",
   piercing: "Piercing",
