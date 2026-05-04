@@ -102,6 +102,28 @@ export interface MerchantSummary {
   discountPercent: number;
 }
 
+export interface MoraleBreakdown {
+  stat: number;
+  leadership: number;
+  racial: number;
+  items: number;
+  baseTotal: number;
+  total: number;
+  racialSkillId: string;
+}
+
+export interface MoraleView {
+  morale: number;
+  commandEffect: number;
+  armyLimitBonus: number;
+  unitAttackSpeed: UnitAttackSpeedSummary;
+}
+
+export interface UnitAttackSpeedSummary {
+  periodMs: number;
+  seconds: number;
+}
+
 export interface DamageResistances {
   piercing: number;
   slashing: number;
@@ -133,6 +155,8 @@ export interface HeroSummary {
   spellcasting: number;
   initialTroopXp: number;
   morale: number;
+  moraleBreakdown: MoraleBreakdown;
+  moraleViews: Record<"general" | "racial", MoraleView>;
   merchant: MerchantSummary;
   armySetupPoints: number;
   commandRadius: number;

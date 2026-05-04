@@ -230,7 +230,7 @@ export function calculateHeroSummary(build) {
     itemTotal(itemEffects, "speedAll") -
     itemTotal(itemEffects, "slow") -
     itemTotal(itemEffects, "slowAll");
-  const attackSpeed = calculateAttackSpeed(stats, baseSkillLevels, itemEffects);
+  const attackSpeed = calculateAttackSpeed(stats, skillLevels, itemEffects);
   const life =
     heroClass.baseLife +
     (level - 1) * heroClass.lifePerLevel +
@@ -240,7 +240,7 @@ export function calculateHeroSummary(build) {
     heroClass.baseMana +
     bonus(stats, "mana") +
     skillEffect("lore", skillLevels.lore);
-  const fireMissileActive = hasSkill(baseSkillLevels, "fireMissile");
+  const fireMissileActive = hasSkill(skillLevels, "fireMissile");
   const rawDamageAdd = skillEffect("mightyBlow", skillLevels.mightyBlow) + itemTotal(itemEffects, "weaponDamage");
   const damage = 10 + bonus(stats, "damage") + (fireMissileActive ? Math.trunc(rawDamageAdd / 3) : rawDamageAdd);
   const armor =
@@ -257,10 +257,15 @@ export function calculateHeroSummary(build) {
     skillEffect("ritual", skillLevels.ritual) +
     itemTotal(itemEffects, "spellcasting");
   const initialTroopXp = bonus(stats, "initialTroopXp") + itemTotal(itemEffects, "training");
-  const morale = calculateMorale(build.raceId, stats, skillLevels, itemEffects);
-  const commandEffect = calculateCommandEffect(morale);
-  const armyLimitBonus = calculateArmyLimitBonus(morale);
-  const unitAttackSpeed = calculateUnitAttackSpeed(morale);
+  const moraleBreakdown = calculateMoraleBreakdown(build.raceId, stats, skillLevels, itemEffects);
+  const moraleViews = {
+    general: calculateMoraleView(moraleBreakdown.baseTotal),
+    racial: calculateMoraleView(moraleBreakdown.total),
+  };
+  const morale = moraleViews.racial.morale;
+  const commandEffect = moraleViews.racial.commandEffect;
+  const armyLimitBonus = moraleViews.racial.armyLimitBonus;
+  const unitAttackSpeed = moraleViews.racial.unitAttackSpeed;
   const merchant = calculateMerchant(stats, skillLevels, itemEffects);
   const armySetupPoints = calculateArmySetupPoints(stats, skillLevels);
   const command = calculateCommand(stats, itemEffects);
@@ -286,7 +291,7 @@ export function calculateHeroSummary(build) {
     life,
     mana,
     damage,
-    damageType: getDamageType(heroClass, baseSkillLevels, itemEffects),
+    damageType: getDamageType(heroClass, skillLevels, itemEffects),
     armor,
     resistance,
     damageResistances,
@@ -295,6 +300,8 @@ export function calculateHeroSummary(build) {
     spellcasting,
     initialTroopXp,
     morale,
+    moraleBreakdown,
+    moraleViews,
     commandEffect,
     unitAttackSpeed,
     merchant,
@@ -431,17 +438,10 @@ export function calculateConditionalSkillEffects(skillLevels = {}, itemEffects =
 export function calculateSkillEffectList(skillLevels = {}, options = {}) {
   const effects = [];
   const includeInactive = options.includeInactive === true;
-  const itemEffects = options.itemEffects ?? {};
-  const directItemEffectKeys = {
-    assassin: "assassin",
-    vampirism: "vampirism",
-    weaponmaster: "criticalHit",
-  };
   const hasListedSkill = (skillId) => Object.prototype.hasOwnProperty.call(skillLevels ?? {}, skillId);
   const currentLevel = (skillId) => Math.max(0, Math.trunc(skillLevels?.[skillId] ?? 0));
-  const directItemEffect = (skillId) => itemTotal(itemEffects, directItemEffectKeys[skillId]);
   const shouldInclude = (skillId) =>
-    includeInactive ? hasListedSkill(skillId) || directItemEffect(skillId) !== 0 : hasSkill(skillLevels, skillId) || directItemEffect(skillId) !== 0;
+    includeInactive ? hasListedSkill(skillId) : hasSkill(skillLevels, skillId);
   const add = (skillId, label, value, detail = "", category = "Skill Effects", rawValue = null, skillLevel = currentLevel(skillId)) => {
     if (!shouldInclude(skillId)) return;
     effects.push({
@@ -458,7 +458,7 @@ export function calculateSkillEffectList(skillLevels = {}, options = {}) {
   const addSkillEffect = (skillId, label, formatter, detail = "", category = "Skill Effects") => {
     if (!shouldInclude(skillId)) return;
     const level = currentLevel(skillId);
-    const rawValue = skillEffect(skillId, level) + directItemEffect(skillId);
+    const rawValue = skillEffect(skillId, level);
     add(skillId, label, formatter(rawValue, level), detail, category, rawValue, level);
   };
   const signed = (value) => formatSigned(value);
@@ -638,13 +638,34 @@ export function calculateManaRegen(stats, skillLevels = {}, itemEffects = {}) {
 }
 
 export function calculateMorale(raceId, stats, skillLevels = {}, itemEffects = {}) {
+  return calculateMoraleBreakdown(raceId, stats, skillLevels, itemEffects).total;
+}
+
+export function calculateMoraleBreakdown(raceId, stats, skillLevels = {}, itemEffects = {}) {
   const racialSkillId = RACE_MORALE_SKILL_IDS[raceId];
-  return (
-    bonus(stats, "morale") +
-    skillEffect("leadership", skillLevels.leadership) +
-    skillEffect(racialSkillId, skillLevels[racialSkillId]) +
-    itemTotal(itemEffects, "morale")
-  );
+  const stat = bonus(stats, "morale");
+  const leadership = skillEffect("leadership", skillLevels.leadership);
+  const racial = racialSkillId ? skillEffect(racialSkillId, skillLevels[racialSkillId]) : 0;
+  const items = itemTotal(itemEffects, "morale");
+  const baseTotal = stat + leadership + items;
+  return {
+    stat,
+    leadership,
+    racial,
+    items,
+    baseTotal,
+    total: baseTotal + racial,
+    racialSkillId: racialSkillId ?? "",
+  };
+}
+
+export function calculateMoraleView(morale) {
+  return {
+    morale,
+    commandEffect: calculateCommandEffect(morale),
+    armyLimitBonus: calculateArmyLimitBonus(morale),
+    unitAttackSpeed: calculateUnitAttackSpeed(morale),
+  };
 }
 
 export function calculateCommandEffect(morale) {

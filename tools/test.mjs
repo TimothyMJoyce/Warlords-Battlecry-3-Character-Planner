@@ -84,6 +84,12 @@ const baseBuild = {
   skillAllocation: {},
 };
 
+function getSkillDataIndex(skillId) {
+  const index = skills.findIndex((skill) => skill.id === skillId);
+  assert.notEqual(index, -1, `Missing skill data index for ${skillId}`);
+  return index;
+}
+
 assert.equal(races.length, 16, "WBC3 data includes 16 hero races");
 assert.equal(heroClasses.length, 29, "WBC3 data includes 29 hero classes");
 assert.equal(skills[39].id, "dwarfslayer");
@@ -195,6 +201,10 @@ assert.deepEqual([...protectorsMergedFerocity.mergedFrom].sort(), ["class", "rac
 assert.equal(getProtectorsAvailableSkillUnlocks({ ...protectorsBuild, classId: "ranger" }).length, 11);
 assert.equal(getProtectorsAvailableSkillUnlocks({ ...protectorsBuild, classId: "ranger" }).at(-1).skillId, "woodcraft");
 assert.equal(calculateProtectorsHeroSummary({ ...protectorsBuild, level: 20 }).xpForLevel, 27075);
+const protectorsSummary = calculateProtectorsHeroSummary(protectorsBuild);
+assert.equal(protectorsSummary.moraleBreakdown.racialSkillId, "hornedLord");
+assert.equal(protectorsSummary.moraleViews.racial.morale, protectorsSummary.morale);
+assert.equal(protectorsSummary.moraleViews.general.morale, protectorsSummary.morale - protectorsSummary.moraleBreakdown.racial);
 const missingProtectorsSkillDescriptions = protectorsSkills
   .filter((skill) => skill.id !== "null")
   .filter((skill) => calculateProtectorsSkillEffectList({ [skill.id]: 1 }, { includeInactive: true }).length === 0)
@@ -246,6 +256,12 @@ assert.match(appSource, /clampItemSearchPage/);
 assert.match(appSource, /localItemSets/);
 assert.match(appSource, /buildWithLocalItemData/);
 assert.match(appSource, /itemBreakdowns/);
+assert.doesNotMatch(appSource, /getDirectItemEffectSkillIds/);
+assert.doesNotMatch(appSource, /merchant: "merchant"/);
+assert.doesNotMatch(appSource, /weaponmaster: "criticalHit"/);
+assert.match(appSource, /data-morale-view/);
+assert.match(appSource, /morale-switcher/);
+assert.match(appSource, /moraleViewMode/);
 assert.match(appSource, /summary-tooltip/);
 assert.doesNotMatch(appSource, /4:3 preview \/ \$\{escapeHtml\(animation\.label\)\}/);
 assert.deepEqual(getCommandRadiusSceneMetrics(25), {
@@ -333,6 +349,33 @@ assert.deepEqual(summary.manaRegen, {
 assert.equal(summary.spellcasting, 3);
 assert.equal(summary.initialTroopXp, 0);
 assert.equal(summary.morale, 3);
+assert.deepEqual(summary.moraleBreakdown, {
+  stat: 2,
+  leadership: 0,
+  racial: 1,
+  items: 0,
+  baseTotal: 2,
+  total: 3,
+  racialSkillId: "horseLord",
+});
+assert.deepEqual(summary.moraleViews.general, {
+  morale: 2,
+  commandEffect: 2,
+  armyLimitBonus: 1,
+  unitAttackSpeed: {
+    periodMs: 1480,
+    seconds: 1.48,
+  },
+});
+assert.deepEqual(summary.moraleViews.racial, {
+  morale: 3,
+  commandEffect: 3,
+  armyLimitBonus: 1,
+  unitAttackSpeed: {
+    periodMs: 1470,
+    seconds: 1.47,
+  },
+});
 assert.equal(summary.commandEffect, 3);
 assert.deepEqual(summary.unitAttackSpeed, {
   periodMs: 1470,
@@ -351,6 +394,48 @@ assert.equal(summary.conversionTime, 39);
 assert.equal(summary.conversionRange, 7);
 assert.equal(summary.armyLimitBonus, 1);
 assert.equal(summary.retinueSlots, 8);
+
+const swiftnessItemSummary = calculateHeroSummary({
+  ...baseBuild,
+  itemCatalog: [
+    {
+      id: "synthetic-swiftness-item",
+      numericId: 9001,
+      powers: [{ type: "hero skill", data: getSkillDataIndex("swiftness"), level: 5, displayText: "+20% Attack speed" }],
+    },
+  ],
+  items: { ring1: "synthetic-swiftness-item" },
+});
+assert.equal(swiftnessItemSummary.skillLevels.swiftness, 5);
+assert.deepEqual(swiftnessItemSummary.attackSpeed, {
+  periodMs: 952,
+  multiplier: 0.95,
+  bonusPercent: 5,
+  dexterityBonus: 4,
+  swiftnessBonus: 20,
+  fightSpeed: 10,
+});
+
+const fireMissileItemSummary = calculateHeroSummary({
+  ...baseBuild,
+  itemCatalog: [
+    {
+      id: "synthetic-fire-missile-item",
+      numericId: 9002,
+      powers: [{ type: "hero skill", data: getSkillDataIndex("fireMissile"), level: 1, displayText: "Fire Missile 1" }],
+    },
+  ],
+  items: { ring1: "synthetic-fire-missile-item" },
+});
+assert.equal(fireMissileItemSummary.skillLevels.fireMissile, 1);
+assert.equal(fireMissileItemSummary.damageType, "Hot and Pointy");
+assert.equal(fireMissileItemSummary.attackSpeed.fightSpeed, 8);
+assert.deepEqual(
+  fireMissileItemSummary.skillEffectList
+    .filter((effect) => effect.skillId === "fireMissile")
+    .map((effect) => [effect.value, effect.rawValue, effect.skillLevel]),
+  [["50% damage / 6 range", 50, 1]],
+);
 assert.equal(calculateCommandRadius({ strength: 1, dexterity: 1, intelligence: 1, charisma: 51 }), 18);
 assert.equal(calculateCommandRadius({ strength: 1, dexterity: 1, intelligence: 1, charisma: 52 }), 19);
 assert.equal(calculateCommandRadius({ strength: 1, dexterity: 1, intelligence: 1, charisma: 80 }), 19);
@@ -658,6 +743,59 @@ try {
     itemCatalog: itemCatalog.items,
     itemSets: itemCatalog.sets,
   };
+  const itemSkillModifierFailures = [];
+  let itemSkillModifierCount = 0;
+  for (const item of itemCatalog.items) {
+    const expectedSkillDeltas = new Map();
+    for (const power of item.powers ?? []) {
+      if (String(power.type).trim().toLowerCase() !== "hero skill") continue;
+      itemSkillModifierCount += 1;
+      const skill = skills[Number(power.data)];
+      const amount = Math.trunc(Number(power.level) || 0);
+      if (!skill?.id) {
+        itemSkillModifierFailures.push({ item: item.name, data: power.data, level: power.level, reason: "Unknown skill index" });
+        continue;
+      }
+      expectedSkillDeltas.set(skill.id, (expectedSkillDeltas.get(skill.id) ?? 0) + amount);
+    }
+
+    if (!expectedSkillDeltas.size) continue;
+    const itemSummary = calculateHeroSummary({ ...itemDataBuild, items: { ring1: item.id } });
+    for (const [skillId, amount] of expectedSkillDeltas) {
+      const baseLevel = Math.max(0, Math.trunc(Number(summary.skillLevels?.[skillId]) || 0));
+      const expectedLevel = Math.max(0, baseLevel + amount);
+      const actualLevel = Math.max(0, Math.trunc(Number(itemSummary.skillLevels?.[skillId]) || 0));
+      const hasContribution = (itemSummary.itemEffects.skillContributions ?? []).some(
+        (entry) =>
+          entry.source === item.name &&
+          entry.skillId === skillId &&
+          Math.trunc(Number(entry.amount) || 0) === amount,
+      );
+      if (actualLevel !== expectedLevel || !hasContribution) {
+        itemSkillModifierFailures.push({ item: item.name, skillId, amount, expectedLevel, actualLevel, hasContribution });
+      }
+    }
+  }
+  assert.equal(itemSkillModifierCount, 81);
+  assert.deepEqual(itemSkillModifierFailures, []);
+
+  const aranokSummary = calculateHeroSummary({
+    ...itemDataBuild,
+    items: { weapon: itemCatalog.items.find((item) => item.name === "Sword of Sir Aranok").id },
+  });
+  assert.equal(aranokSummary.skillLevels.weaponmaster ?? 0, 0);
+  assert.equal(aranokSummary.skillEffectList.some((effect) => effect.skillId === "weaponmaster"), false);
+  assert.equal(aranokSummary.itemEffects.breakdowns.criticalHit.some((entry) => entry.source === "Sword of Sir Aranok"), true);
+
+  const merchantBeltSummary = calculateHeroSummary({
+    ...itemDataBuild,
+    items: { ring1: itemCatalog.items.find((item) => item.name === "Merchant's Belt").id },
+  });
+  assert.equal(merchantBeltSummary.skillLevels.merchant ?? 0, 0);
+  assert.equal(merchantBeltSummary.skillEffectList.some((effect) => effect.skillId === "merchant"), false);
+  assert.equal(merchantBeltSummary.merchant.score, summary.merchant.score + 5);
+  assert.equal(merchantBeltSummary.itemEffects.breakdowns.merchant.some((entry) => entry.source === "Merchant's Belt"), true);
+
   const staffSummary = calculateHeroSummary({
     ...itemDataBuild,
     items: { weapon: "item-1" },
@@ -683,7 +821,8 @@ try {
     classId: "assassin",
     items: { weapon: assassinBlade.id },
   });
-  assert.equal(assassinBladeSummary.skillEffectList.find((effect) => effect.skillId === "assassin").rawValue, 12);
+  assert.equal(assassinBladeSummary.skillLevels.assassin, 3);
+  assert.equal(assassinBladeSummary.skillEffectList.find((effect) => effect.skillId === "assassin").rawValue, 7);
   assert.equal(assassinBladeSummary.itemBreakdowns.assassin.some((entry) => entry.source === "Assassin's Blade"), true);
 
   const godsSetSummary = calculateHeroSummary({

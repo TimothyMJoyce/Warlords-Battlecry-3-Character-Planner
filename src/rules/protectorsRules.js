@@ -263,9 +263,14 @@ export function calculateHeroSummary(build) {
   const manaRegen = calculateManaRegen(stats, skillLevels);
   const spellcasting = skillEffect("ritual", (skillLevels.ritual ?? 0) + intelligenceBonus);
   const initialTroopXp = skillEffect("trainer", (skillLevels.trainer ?? 0) + charismaBonus);
-  const morale = calculateMorale(build.raceId, stats, skillLevels);
-  const commandEffect = calculateCommandEffect(morale);
-  const unitAttackSpeed = calculateUnitAttackSpeed(morale);
+  const moraleBreakdown = calculateMoraleBreakdown(build.raceId, stats, skillLevels);
+  const moraleViews = {
+    general: calculateMoraleView(moraleBreakdown.baseTotal),
+    racial: calculateMoraleView(moraleBreakdown.total),
+  };
+  const morale = moraleViews.racial.morale;
+  const commandEffect = moraleViews.racial.commandEffect;
+  const unitAttackSpeed = moraleViews.racial.unitAttackSpeed;
   const merchant = calculateMerchant(stats, skillLevels);
   const command = calculateCommand(stats, skillLevels);
   const commandRadius = getEffectiveCommandRadius(command);
@@ -273,7 +278,7 @@ export function calculateHeroSummary(build) {
   const conversion = 8 + Math.trunc(level / 2);
   const conversionTime = Math.max(5, 50 - skillEffect("convincing", (skillLevels.convincing ?? 0) + dexterityBonus));
   const conversionRange = commandRadius;
-  const armyLimitBonus = calculateArmyLimitBonus(morale);
+  const armyLimitBonus = moraleViews.racial.armyLimitBonus;
   const retinueSlots = 8;
   const skillEffectList = calculateSkillEffectList(skillLevels, { includeInactive: true });
   const skillEffects = calculateConditionalSkillEffects(skillLevels);
@@ -299,6 +304,8 @@ export function calculateHeroSummary(build) {
     spellcasting,
     initialTroopXp,
     morale,
+    moraleBreakdown,
+    moraleViews,
     commandEffect,
     unitAttackSpeed,
     merchant,
@@ -439,8 +446,33 @@ export function calculateManaRegen(stats, skillLevels = {}) {
 }
 
 export function calculateMorale(raceId, stats, skillLevels = {}) {
+  return calculateMoraleBreakdown(raceId, stats, skillLevels).total;
+}
+
+export function calculateMoraleBreakdown(raceId, stats, skillLevels = {}) {
   const racialSkillId = RACE_MORALE_SKILL_IDS[raceId];
-  return statBonus(stats.charisma) + skillEffect("leadership", skillLevels.leadership) + skillEffect(racialSkillId, skillLevels[racialSkillId]);
+  const stat = statBonus(stats.charisma);
+  const leadership = skillEffect("leadership", skillLevels.leadership);
+  const racial = racialSkillId ? skillEffect(racialSkillId, skillLevels[racialSkillId]) : 0;
+  const baseTotal = stat + leadership;
+  return {
+    stat,
+    leadership,
+    racial,
+    items: 0,
+    baseTotal,
+    total: baseTotal + racial,
+    racialSkillId: racialSkillId ?? "",
+  };
+}
+
+export function calculateMoraleView(morale) {
+  return {
+    morale,
+    commandEffect: calculateCommandEffect(morale),
+    armyLimitBonus: calculateArmyLimitBonus(morale),
+    unitAttackSpeed: calculateUnitAttackSpeed(morale),
+  };
 }
 
 export function calculateCommandEffect(morale) {

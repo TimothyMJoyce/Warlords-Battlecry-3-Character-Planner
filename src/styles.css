@@ -1181,10 +1181,49 @@ output {
   gap: 12px;
 }
 
+.morale-main {
+  flex-wrap: wrap;
+}
+
 .morale-main strong {
   color: var(--blue);
   font-size: 0.98rem;
   font-weight: 900;
+}
+
+.morale-controls {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.morale-switcher {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+  min-width: 0;
+}
+
+.morale-switch-button {
+  min-height: 26px;
+  border-radius: 999px;
+  padding: 3px 8px;
+  background: var(--panel-soft);
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 900;
+  line-height: 1.1;
+}
+
+.morale-switch-button.is-active {
+  border-color: var(--gold);
+  background: var(--active-bg);
+  color: var(--gold);
 }
 
 .morale-value,

@@ -53,6 +53,7 @@ const itemLevelFilters = [
   { id: "set", label: "Set" },
 ];
 const itemSearchPageSize = 8;
+const moraleViewModes = new Set(["general", "racial"]);
 
 document.title = "Warlords Battlecry 3 - Character Planner";
 
@@ -96,6 +97,7 @@ let itemSearchQuery = "";
 let itemLevelFilter = "all";
 let itemSlotFilter = "all";
 let itemSearchPage = 0;
+let moraleViewMode = "racial";
 let tooltipDismissHandlersBound = false;
 let previewAnimationId = DEFAULT_HERO_ANIMATION_ID;
 let heroPreviewExpanded = false;
@@ -361,7 +363,7 @@ function render() {
         <section class="panel charisma-panel">
           ${statAllocator("charisma", startingStats, statValidation, pointBudget, summary)}
           <div class="summary-grid">
-            ${moraleEffectsSection(summary)}
+            ${moraleEffectsSection(summary, race)}
             ${derivedStatsSection("", `
               ${derivedStatGroup([
                 { label: "Merchant", value: formatMerchant(summary.merchant), tooltip: statBreakdown(summary, "merchant") },
@@ -409,6 +411,13 @@ function bindEvents() {
   document.querySelectorAll("[data-ruleset-id]").forEach((button) => {
     button.addEventListener("click", () => {
       selectRuleset(button.dataset.rulesetId);
+    });
+  });
+
+  document.querySelectorAll("[data-morale-view]").forEach((button) => {
+    button.addEventListener("click", () => {
+      moraleViewMode = normalizeMoraleViewMode(button.dataset.moraleView);
+      render();
     });
   });
 
@@ -2526,12 +2535,6 @@ const statBreakdownLabels = {
   spellcasting: "Spellcasting",
 };
 
-const directSkillItemBreakdownKeys = {
-  assassin: "assassin",
-  vampirism: "vampirism",
-  weaponmaster: "criticalHit",
-};
-
 function statBreakdown(summary, ...keys) {
   const rows = [];
   const itemBreakdowns = summary.itemBreakdowns ?? {};
@@ -2562,12 +2565,6 @@ function skillItemBreakdown(summary, skillId) {
     const levelText = Math.abs(Number(contribution.amount) || 0) === 1 ? "skill level" : "skill levels";
     const detail = contribution.text ? ` (${contribution.text})` : "";
     rows.push(`${source}${amount} ${levelText}${detail}`);
-  }
-
-  const directBreakdownKey = directSkillItemBreakdownKeys[skillId];
-  for (const entry of itemEffects.breakdowns?.[directBreakdownKey] ?? []) {
-    const source = entry.source ? `${entry.source}: ` : "";
-    rows.push(`${source}${entry.text}`);
   }
 
   return rows.length ? `Item modifiers:\n${dedupeRows(rows).join("\n")}` : "";
@@ -2655,24 +2652,93 @@ function defenseGroup(label, value, items, iconKey = summaryIconKeys[label], too
   `;
 }
 
-function moraleEffectsSection(summary) {
+function moraleEffectsSection(summary, race) {
+  const selectedView = getSelectedMoraleView(summary);
   const tooltip = statBreakdown(summary, "morale");
   return `
     <section class="morale-effects">
       <div class="morale-main ${tooltip ? "has-tooltip" : ""}">
         <span class="summary-label">${iconMarkup(summaryIconKeys.Morale)}Morale</span>
-        <span class="morale-value">
-          <strong>${summary.morale}</strong>
-          ${tooltip ? summaryTooltip("Morale item modifiers", tooltip) : ""}
+        <span class="morale-controls">
+          ${moraleRaceSwitcher(summary, race)}
+          <span class="morale-value">
+            <strong>${escapeHtml(selectedView.morale)}</strong>
+            ${tooltip ? summaryTooltip("Morale item modifiers", tooltip) : ""}
+          </span>
         </span>
       </div>
       <div class="morale-effects-list">
-        ${moraleEffectRow("Army Limit Bonus", formatSignedValue(summary.armyLimitBonus), tooltip)}
-        ${moraleEffectRow("Command Effect", `${summary.commandEffect}s`, tooltip)}
-        ${moraleEffectRow("Unit Attack Speed", formatUnitAttackSpeed(summary.unitAttackSpeed), tooltip)}
+        ${moraleEffectRow("Army Limit Bonus", formatSignedValue(selectedView.armyLimitBonus), tooltip)}
+        ${moraleEffectRow("Command Effect", `${selectedView.commandEffect}s`, tooltip)}
+        ${moraleEffectRow("Unit Attack Speed", formatUnitAttackSpeed(selectedView.unitAttackSpeed), tooltip)}
       </div>
     </section>
   `;
+}
+
+function moraleRaceSwitcher(summary, race) {
+  const breakdown = summary.moraleBreakdown ?? {};
+  const racialBonus = Math.trunc(Number(breakdown.racial) || 0);
+  if (racialBonus === 0) return "";
+
+  const selectedMode = normalizeMoraleViewMode(moraleViewMode);
+  const raceLabel = race?.displayName ?? "Race";
+  const skillLabel = skillsById?.[breakdown.racialSkillId]?.displayName ?? "race bonus";
+  const options = [
+    {
+      id: "general",
+      label: "All",
+      title: `Show morale without ${skillLabel}`,
+    },
+    {
+      id: "racial",
+      label: raceLabel,
+      title: `Show morale with ${skillLabel} (${formatSignedValue(racialBonus)})`,
+    },
+  ];
+
+  return `
+    <span class="morale-switcher" role="group" aria-label="Morale race bonus view">
+      ${options.map((option) => `
+        <button
+          type="button"
+          class="morale-switch-button ${option.id === selectedMode ? "is-active" : ""}"
+          data-morale-view="${escapeHtml(option.id)}"
+          aria-pressed="${option.id === selectedMode ? "true" : "false"}"
+          title="${escapeHtml(option.title)}"
+        >
+          ${escapeHtml(option.label)}
+        </button>
+      `).join("")}
+    </span>
+  `;
+}
+
+function getSelectedMoraleView(summary) {
+  const fallback = fallbackMoraleView(summary);
+  if (!hasRaceMoraleBonus(summary)) {
+    return summary.moraleViews?.racial ?? fallback;
+  }
+
+  const mode = normalizeMoraleViewMode(moraleViewMode);
+  return summary.moraleViews?.[mode] ?? summary.moraleViews?.racial ?? fallback;
+}
+
+function fallbackMoraleView(summary) {
+  return {
+    morale: summary.morale,
+    armyLimitBonus: summary.armyLimitBonus,
+    commandEffect: summary.commandEffect,
+    unitAttackSpeed: summary.unitAttackSpeed,
+  };
+}
+
+function hasRaceMoraleBonus(summary) {
+  return Math.trunc(Number(summary.moraleBreakdown?.racial) || 0) !== 0;
+}
+
+function normalizeMoraleViewMode(value) {
+  return moraleViewModes.has(value) ? value : "racial";
 }
 
 function moraleEffectRow(label, value, tooltip = "") {
