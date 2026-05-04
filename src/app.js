@@ -100,6 +100,8 @@ let itemSlotFilter = "all";
 let itemSearchPage = 0;
 let moraleViewMode = "racial";
 let tooltipDismissHandlersBound = false;
+let statHoverTooltipElement = null;
+let activeStatHoverAnchor = null;
 let previewAnimationId = DEFAULT_HERO_ANIMATION_ID;
 let heroPreviewExpanded = false;
 let heroPreviewZoom = 1;
@@ -230,6 +232,7 @@ function render() {
   previewAnimationId = normalizeHeroAnimationId(avatarId, previewAnimationId);
   previewSpellId = normalizeSpellPreviewId(previewSpellId);
 
+  closeStatHoverTooltip();
   app.innerHTML = `
     <main class="shell">
       <header class="topbar">
@@ -410,6 +413,7 @@ function render() {
 function bindEvents() {
   bindExclusiveTopbarMenus();
   bindExclusiveTooltips();
+  bindStatHoverTooltips();
 
   document.querySelectorAll("[data-ruleset-id]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -632,6 +636,7 @@ function bindExclusiveTooltips() {
     tooltip.addEventListener("toggle", () => {
       tooltip.classList.remove("is-positioned");
       if (!tooltip.open) return;
+      closeStatHoverTooltip();
       for (const otherTooltip of getOpenTooltips()) {
         if (otherTooltip !== tooltip) otherTooltip.open = false;
       }
@@ -648,14 +653,24 @@ function bindGlobalTooltipDismissHandlers() {
   document.addEventListener("pointerdown", (event) => {
     if (event.target?.closest?.(".summary-tooltip, .item-description-tooltip")) return;
     closeOpenTooltips();
+    closeStatHoverTooltip();
   });
 
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") closeOpenTooltips();
+    if (event.key === "Escape") {
+      closeOpenTooltips();
+      closeStatHoverTooltip();
+    }
   });
 
-  window.addEventListener("scroll", closeTooltipsOutsideViewport, true);
-  window.addEventListener("resize", closeTooltipsOutsideViewport);
+  window.addEventListener("scroll", () => {
+    closeTooltipsOutsideViewport();
+    closeStatHoverTooltip();
+  }, true);
+  window.addEventListener("resize", () => {
+    closeTooltipsOutsideViewport();
+    closeStatHoverTooltip();
+  });
 }
 
 function getOpenTooltips() {
@@ -716,6 +731,80 @@ function positionTooltip(tooltip) {
   bubble.style.left = `${Math.round(left)}px`;
   bubble.style.top = `${Math.round(top)}px`;
   tooltip.classList.add("is-positioned");
+}
+
+function bindStatHoverTooltips() {
+  const rows = Array.from(document.querySelectorAll("[data-stat-tooltip]"));
+  for (const row of rows) {
+    row.addEventListener("pointerenter", () => showStatHoverTooltip(row));
+    row.addEventListener("pointerleave", () => closeStatHoverTooltip(row));
+    row.addEventListener("focus", () => showStatHoverTooltip(row));
+    row.addEventListener("blur", () => closeStatHoverTooltip(row));
+  }
+}
+
+function showStatHoverTooltip(anchor) {
+  const tooltipText = anchor?.dataset?.statTooltip ?? "";
+  if (!tooltipText) return;
+
+  closeOpenTooltips();
+  closeStatHoverTooltip();
+  activeStatHoverAnchor = anchor;
+
+  const tooltip = getStatHoverTooltipElement();
+  tooltip.textContent = tooltipText;
+  tooltip.hidden = false;
+  tooltip.classList.remove("is-visible");
+  anchor.setAttribute("aria-describedby", tooltip.id);
+  positionStatHoverTooltip(anchor, tooltip);
+  tooltip.classList.add("is-visible");
+}
+
+function closeStatHoverTooltip(anchor = null) {
+  if (anchor && activeStatHoverAnchor && anchor !== activeStatHoverAnchor) return;
+  if (activeStatHoverAnchor) activeStatHoverAnchor.removeAttribute("aria-describedby");
+  activeStatHoverAnchor = null;
+  if (!statHoverTooltipElement) return;
+  statHoverTooltipElement.classList.remove("is-visible");
+  statHoverTooltipElement.hidden = true;
+}
+
+function getStatHoverTooltipElement() {
+  if (statHoverTooltipElement) return statHoverTooltipElement;
+
+  statHoverTooltipElement = document.createElement("div");
+  statHoverTooltipElement.id = "stat-hover-tooltip";
+  statHoverTooltipElement.className = "stat-hover-tooltip";
+  statHoverTooltipElement.setAttribute("role", "tooltip");
+  statHoverTooltipElement.hidden = true;
+  document.body.appendChild(statHoverTooltipElement);
+  return statHoverTooltipElement;
+}
+
+function positionStatHoverTooltip(anchor, tooltip) {
+  const anchorRect = anchor.getBoundingClientRect();
+  const margin = 12;
+  const gap = 8;
+  const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+
+  tooltip.style.left = "0px";
+  tooltip.style.top = "0px";
+
+  const tooltipRect = tooltip.getBoundingClientRect();
+  const tooltipWidth = Math.min(tooltipRect.width || 340, Math.max(140, viewportWidth - margin * 2));
+  const tooltipHeight = Math.min(tooltipRect.height || 80, Math.max(60, viewportHeight - margin * 2));
+
+  let left = anchorRect.right - tooltipWidth;
+  left = Math.max(margin, Math.min(left, viewportWidth - tooltipWidth - margin));
+
+  const topBelow = anchorRect.bottom + gap;
+  const topAbove = anchorRect.top - tooltipHeight - gap;
+  let top = topBelow + tooltipHeight <= viewportHeight - margin ? topBelow : topAbove;
+  if (top < margin) top = Math.max(margin, viewportHeight - tooltipHeight - margin);
+
+  tooltip.style.left = `${Math.round(left)}px`;
+  tooltip.style.top = `${Math.round(top)}px`;
 }
 
 function updateStat(key, delta) {
@@ -2678,15 +2767,13 @@ function derivedStatGroup(rows) {
 }
 
 function derivedStatRow({ label, value, secondary = "", tooltip = "", iconKey = summaryIconKeys[label] }) {
-  const tooltipMarkup = tooltip ? summaryTooltip(`${label} details`, tooltip) : "";
   const secondaryMarkup = secondary ? `<small class="summary-subvalue">${escapeHtml(secondary)}</small>` : "";
   return `
-    <div class="derived-stat-row ${tooltip ? "has-tooltip" : ""}">
+    <div class="derived-stat-row ${statHoverClass(tooltip)}"${statHoverAttributes(tooltip)}>
       <span class="summary-label">${iconMarkup(iconKey)}${escapeHtml(label)}</span>
       <span class="derived-stat-value">
         <strong>${escapeHtml(value)}</strong>
         ${secondaryMarkup}
-        ${tooltipMarkup}
       </span>
     </div>
   `;
@@ -2695,20 +2782,18 @@ function derivedStatRow({ label, value, secondary = "", tooltip = "", iconKey = 
 function defenseGroup(label, value, items, iconKey = summaryIconKeys[label], tooltip = "") {
   return `
     <div class="defense-group">
-      <div class="defense-parent ${tooltip ? "has-tooltip" : ""}">
+      <div class="defense-parent ${statHoverClass(tooltip)}"${statHoverAttributes(tooltip)}>
         <span class="summary-label">${iconMarkup(iconKey)}${escapeHtml(label)}</span>
         <span class="defense-value">
           <strong>${escapeHtml(value)}</strong>
-          ${tooltip ? summaryTooltip(`${label} details`, tooltip) : ""}
         </span>
       </div>
       <div class="defense-sublist">
         ${items.map(([itemLabel, itemValue, itemIconKey = summaryIconKeys[itemLabel], itemTooltip = ""]) => `
-          <div class="defense-subrow ${itemTooltip ? "has-tooltip" : ""}">
+          <div class="defense-subrow ${statHoverClass(itemTooltip)}"${statHoverAttributes(itemTooltip)}>
             <span class="summary-label">${iconMarkup(itemIconKey)}${escapeHtml(itemLabel)}</span>
             <span class="defense-value">
               <strong>${escapeHtml(itemValue)}</strong>
-              ${itemTooltip ? summaryTooltip(`${itemLabel} details`, itemTooltip) : ""}
             </span>
           </div>
         `).join("")}
@@ -2722,13 +2807,12 @@ function moraleEffectsSection(summary, race) {
   const tooltip = statBreakdown(summary, "morale");
   return `
     <section class="morale-effects">
-      <div class="morale-main ${tooltip ? "has-tooltip" : ""}">
+      <div class="morale-main ${statHoverClass(tooltip)}"${statHoverAttributes(tooltip)}>
         <span class="summary-label">${iconMarkup(summaryIconKeys.Morale)}Morale</span>
         <span class="morale-controls">
           ${moraleRaceSwitcher(summary, race)}
           <span class="morale-value">
             <strong>${escapeHtml(selectedView.morale)}</strong>
-            ${tooltip ? summaryTooltip("Morale details", tooltip) : ""}
           </span>
         </span>
       </div>
@@ -2808,14 +2892,21 @@ function normalizeMoraleViewMode(value) {
 
 function moraleEffectRow(label, value, tooltip = "") {
   return `
-    <div class="morale-effect-row ${tooltip ? "has-tooltip" : ""}">
+    <div class="morale-effect-row ${statHoverClass(tooltip)}"${statHoverAttributes(tooltip)}>
       <span>${escapeHtml(label)}</span>
       <span class="morale-value">
         <strong>${escapeHtml(value)}</strong>
-        ${tooltip ? summaryTooltip(`${label} details`, tooltip) : ""}
       </span>
     </div>
   `;
+}
+
+function statHoverClass(tooltip) {
+  return tooltip ? "has-tooltip has-stat-hover-tooltip" : "";
+}
+
+function statHoverAttributes(tooltip) {
+  return tooltip ? ` tabindex="0" data-stat-tooltip="${escapeHtml(tooltip)}"` : "";
 }
 
 function groupSkillEffectsBySkill(effects = []) {
