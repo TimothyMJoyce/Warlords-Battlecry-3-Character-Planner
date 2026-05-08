@@ -14,6 +14,13 @@ node_modules/
 .env
 .env.*
 
+# Local WBC3 executable/windowing patch helpers
+tools/launch-wbc3-windowed-fixed-force.bat
+tools/launch-wbc3-windowed-fixed.bat
+tools/patch-wbc3-windowed.ps1
+tools/set-wbc3-16bit-compat.ps1
+tools/wbc3-cursor-lock.ps1
+
 # Editor settings
 .vscode/
 .idea/
