@@ -154,7 +154,7 @@ export async function readEffectAnimationAsset({
   gameInstallDir = "",
   direction = 0,
   paletteType = 0,
-  sideColor = 0,
+  sideColor = -1,
 } = {}) {
   const normalizedEffectId = String(effectId ?? "").toUpperCase();
   if (!/^[A-Z0-9]{4}$/.test(normalizedEffectId)) throw new Error(`Unknown effect: ${effectId}`);

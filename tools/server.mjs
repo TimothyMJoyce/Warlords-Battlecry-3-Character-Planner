@@ -14,6 +14,7 @@ import { readTerrainTileAsset } from "./wbc3-terrain-reader.mjs";
 import { readItemCatalog } from "./wbc3-items-reader.mjs";
 import { readSpellTextCatalog } from "./wbc3-spells-reader.mjs";
 import { readSkillTextCatalog } from "./wbc3-game-text-reader.mjs";
+import { readCommandRadiusRingAsset } from "./wbc3-selection-rings-reader.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const dist = resolve(root, "dist");
@@ -26,6 +27,7 @@ const avatarAssetCache = new Map();
 const sceneObjectAssetCache = new Map();
 const effectAssetCache = new Map();
 const terrainAssetCache = new Map();
+const commandRadiusRingCache = new Map();
 const itemCatalogCache = new Map();
 const spellTextCache = new Map();
 const skillTextCache = new Map();
@@ -161,6 +163,12 @@ async function handleApiRequest(request, url, response) {
 
   if (url.pathname === "/api/local/terrain-tile") {
     const body = await getLocalTerrainTile(url);
+    sendJson(response, body.ok ? 200 : 404, body);
+    return;
+  }
+
+  if (url.pathname === "/api/local/command-radius-ring") {
+    const body = await getLocalCommandRadiusRing();
     sendJson(response, body.ok ? 200 : 404, body);
     return;
   }
@@ -358,6 +366,33 @@ async function getLocalTerrainTile(url) {
       gameInstallDir: settings.gameInstallDir,
     });
     terrainAssetCache.set(cacheKey, asset);
+    return asset;
+  } catch (error) {
+    return {
+      ok: false,
+      available: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+async function getLocalCommandRadiusRing() {
+  try {
+    const settings = await readLocalPathSettings();
+    const cacheKey = JSON.stringify({
+      gameInstallDir: settings.gameInstallDir,
+      graphicsPath: settings.graphicsPath,
+    });
+
+    if (commandRadiusRingCache.has(cacheKey)) {
+      return commandRadiusRingCache.get(cacheKey);
+    }
+
+    const asset = await readCommandRadiusRingAsset({
+      gameInstallDir: settings.gameInstallDir,
+      graphicsPath: settings.graphicsPath,
+    });
+    commandRadiusRingCache.set(cacheKey, asset);
     return asset;
   } catch (error) {
     return {

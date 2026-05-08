@@ -115,6 +115,8 @@ let goldMinePreviewAsset = null;
 let goldMinePreviewAssetError = "";
 let grassTilePreviewAsset = null;
 let grassTilePreviewAssetError = "";
+let commandRadiusRingPreviewAsset = null;
+let commandRadiusRingPreviewAssetError = "";
 let previewSpellId = defaultSpellPreviewId;
 let activeSpellSphereId = spellPreviewGroups[0]?.id ?? "";
 let heroPreviewFrame = 0;
@@ -2137,6 +2139,7 @@ function startHeroPreview(summary, avatarId) {
     loadHeroPreviewAsset(avatarId, animation.id);
   }
   loadGrassTilePreviewAsset();
+  loadCommandRadiusRingPreviewAsset();
   loadGoldMinePreviewAsset();
   if (animation.id === "spell") {
     loadSpellPreviewAssets(previewSpellId);
@@ -2187,6 +2190,7 @@ async function loadGoldMinePreviewAsset() {
   if (cachedAsset) {
     goldMinePreviewAsset = cachedAsset;
     goldMinePreviewAssetError = getPreviewAssetError(cachedAsset);
+    loadSceneObjectEffectPreviewAssets(cachedAsset);
     return cachedAsset;
   }
 
@@ -2194,6 +2198,7 @@ async function loadGoldMinePreviewAsset() {
     const asset = await fetchPreviewAsset(assetKey, "/api/local/scene-object?objectId=goldMine&animation=ambient");
     goldMinePreviewAsset = asset;
     goldMinePreviewAssetError = getPreviewAssetError(asset);
+    loadSceneObjectEffectPreviewAssets(asset);
     return asset;
   } catch (error) {
     goldMinePreviewAsset = null;
@@ -2223,6 +2228,27 @@ async function loadGrassTilePreviewAsset() {
   }
 }
 
+async function loadCommandRadiusRingPreviewAsset() {
+  const assetKey = getCommandRadiusRingAssetKey();
+  const cachedAsset = previewAssetCache.get(assetKey);
+  if (cachedAsset) {
+    commandRadiusRingPreviewAsset = cachedAsset;
+    commandRadiusRingPreviewAssetError = getPreviewAssetError(cachedAsset);
+    return cachedAsset;
+  }
+
+  try {
+    const asset = await fetchPreviewAsset(assetKey, "/api/local/command-radius-ring");
+    commandRadiusRingPreviewAsset = asset;
+    commandRadiusRingPreviewAssetError = getPreviewAssetError(asset);
+    return asset;
+  } catch (error) {
+    commandRadiusRingPreviewAsset = null;
+    commandRadiusRingPreviewAssetError = error instanceof Error ? error.message : "Command radius ring asset is unavailable.";
+    return null;
+  }
+}
+
 async function loadEffectPreviewAsset(effectId) {
   const assetKey = getEffectAssetKey(effectId);
   if (previewAssetCache.has(assetKey)) return previewAssetCache.get(assetKey);
@@ -2233,6 +2259,10 @@ async function loadEffectPreviewAsset(effectId) {
 async function loadSpellPreviewAssets(spellId) {
   const spell = getSpellPreview(spellId);
   return Promise.all(getSpellPreviewEffectIds(spell).map((effectId) => loadEffectPreviewAsset(effectId)));
+}
+
+async function loadSceneObjectEffectPreviewAssets(sceneAsset) {
+  return Promise.all(getSceneObjectEffectIds(sceneAsset).map((effectId) => loadEffectPreviewAsset(effectId)));
 }
 
 async function fetchPreviewAsset(assetKey, url) {
@@ -2273,7 +2303,9 @@ function precacheHeroPreviewAssets() {
 
   const jobs = [];
   jobs.push(() => loadGrassTilePreviewAsset());
+  jobs.push(() => loadCommandRadiusRingPreviewAsset());
   jobs.push(() => loadGoldMinePreviewAsset());
+  jobs.push(() => loadEffectPreviewAsset("EZ01"));
   for (const avatar of heroAvatars) {
     for (const animation of getAvailableHeroAnimationTypes(avatar.id)) {
       jobs.push(() => loadHeroPreviewAsset(avatar.id, animation.id));
@@ -2322,6 +2354,10 @@ function getEffectAssetKey(effectId) {
 
 function getTerrainAssetKey(terrainName, tileId) {
   return `terrain:${String(terrainName ?? "").toLowerCase()}:${String(tileId ?? "").toUpperCase()}`;
+}
+
+function getCommandRadiusRingAssetKey() {
+  return "graphics:command-radius-ring";
 }
 
 function getAllSpellPreviewEffectIds() {
@@ -2430,30 +2466,59 @@ function drawPreviewRadius(context, centerX, centerY, metrics, scale, timestamp)
 
   const radiusX = metrics.radiusX * scale;
   const radiusY = metrics.radiusY * scale;
-  const phase = ((timestamp || 0) / 38) % 32;
+  const pulse = 0.76 + Math.sin((timestamp || 0) / 520) * 0.1;
+  const pulseScale = 1 + Math.sin((timestamp || 0) / 740) * 0.003;
+
+  if (commandRadiusRingPreviewAsset?.available && commandRadiusRingPreviewAsset.image) {
+    drawCommandRadiusRingAsset(context, centerX, centerY, radiusX, radiusY, timestamp, pulse, pulseScale);
+    return;
+  }
+
+  drawCommandRadiusRuntimeRing(context, centerX, centerY, radiusX * pulseScale, radiusY * pulseScale, timestamp, pulse);
+}
+
+function drawCommandRadiusRingAsset(context, centerX, centerY, radiusX, radiusY, timestamp, alpha, pulseScale) {
+  drawCommandRadiusRuntimeRing(context, centerX, centerY, radiusX * pulseScale, radiusY * pulseScale, timestamp, alpha);
+}
+
+function drawCommandRadiusRuntimeRing(context, centerX, centerY, radiusX, radiusY, timestamp, alpha = 1) {
+  const rotation = ((timestamp || 0) / 3100) * Math.PI * 2;
+  const segmentCount = 240;
+  const segmentArc = (Math.PI * 2) / segmentCount;
+  const tailLength = 1.74;
 
   context.save();
-  context.lineWidth = 5;
-  context.strokeStyle = "rgba(18, 61, 112, 0.18)";
+  context.globalCompositeOperation = "screen";
+  context.lineCap = "round";
+
+  context.lineWidth = 2.1;
+  context.strokeStyle = `rgba(16, 75, 132, ${0.16 * alpha})`;
   context.beginPath();
   context.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, Math.PI * 2);
   context.stroke();
 
-  context.lineWidth = 2;
-  context.setLineDash([18, 14]);
-  context.lineDashOffset = -phase;
-  context.strokeStyle = "rgba(245, 250, 255, 0.88)";
+  context.lineWidth = 1.05;
+  context.strokeStyle = `rgba(86, 181, 255, ${0.34 * alpha})`;
   context.beginPath();
   context.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, Math.PI * 2);
   context.stroke();
 
-  context.lineWidth = 2;
-  context.setLineDash([8, 24]);
-  context.lineDashOffset = 24 - phase;
-  context.strokeStyle = "rgba(28, 111, 190, 0.95)";
-  context.beginPath();
-  context.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, Math.PI * 2);
-  context.stroke();
+  for (let index = 0; index < segmentCount; index += 1) {
+    const start = index * segmentArc;
+    const mid = start + segmentArc * 0.5;
+    const headDelta = Math.atan2(Math.sin(mid - rotation), Math.cos(mid - rotation));
+    const behindHead = (rotation - mid + Math.PI * 2) % (Math.PI * 2);
+    const head = Math.exp(-(headDelta * headDelta) / 0.009);
+    const tail = behindHead < tailLength ? Math.pow(1 - behindHead / tailLength, 1.55) * 0.74 : 0;
+    const glow = Math.max(head, tail);
+    if (glow < 0.015) continue;
+
+    context.lineWidth = 1.12 + glow * 1.18;
+    context.strokeStyle = `rgba(${Math.round(72 + glow * 166)}, ${Math.round(176 + glow * 70)}, 255, ${Math.min(0.86, glow * alpha * 0.92)})`;
+    context.beginPath();
+    context.ellipse(centerX, centerY, radiusX, radiusY, 0, start, start + segmentArc * 1.72);
+    context.stroke();
+  }
   context.restore();
 }
 
@@ -2469,12 +2534,12 @@ function drawPreviewMine(context, centerX, centerY, scale, timestamp) {
       goldMinePreviewFrame = (goldMinePreviewFrame + 1) % frameCount;
     }
     drawPreviewSprite(context, goldMinePreviewAsset, point.x, point.y, scale * 0.78, goldMinePreviewFrame, 0);
-    drawGoldMineVfx(context, point.x, point.y, scale, timestamp);
+    drawSceneObjectEffects(context, goldMinePreviewAsset, point.x, point.y, scale * 0.78, timestamp);
     return;
   }
 
   drawFallbackMine(context, point.x, point.y, scale);
-  drawGoldMineVfx(context, point.x, point.y, scale, timestamp);
+  drawFallbackMineVfx(context, point.x, point.y, scale, timestamp);
 }
 
 function drawFallbackMine(context, x, y, scale) {
@@ -2568,7 +2633,31 @@ function drawFallbackMine(context, x, y, scale) {
   context.restore();
 }
 
-function drawGoldMineVfx(context, x, y, scale, timestamp) {
+function drawSceneObjectEffects(context, sceneAsset, anchorX, anchorY, scale, timestamp) {
+  const effectIds = getSceneObjectEffectIds(sceneAsset);
+  if (!effectIds.length) return;
+
+  const offsetX = signedPreviewOffset(sceneAsset.effectOriginX) * scale;
+  const offsetY = signedPreviewOffset(sceneAsset.effectOriginY) * scale;
+  drawEffectList(context, effectIds, anchorX + offsetX, anchorY + offsetY, scale * 0.36, timestamp, {
+    spread: 0,
+    alpha: 0.92,
+  });
+}
+
+function getSceneObjectEffectIds(sceneAsset) {
+  return (sceneAsset?.effects ?? [])
+    .map((effectIndex) => Math.trunc(Number(effectIndex) || 0))
+    .filter((effectIndex) => effectIndex > 0)
+    .map((effectIndex) => `EZ${String(effectIndex).padStart(2, "0")}`);
+}
+
+function signedPreviewOffset(value) {
+  const offset = Math.trunc(Number(value) || 0);
+  return offset > 32767 ? offset - 65536 : offset;
+}
+
+function drawFallbackMineVfx(context, x, y, scale, timestamp) {
   const time = timestamp || 0;
   const size = Math.max(0.8, scale);
 
@@ -2758,6 +2847,7 @@ function drawPreviewMessage(context, width, height) {
     heroPreviewAssetError ||
     goldMinePreviewAssetError ||
     grassTilePreviewAssetError ||
+    commandRadiusRingPreviewAssetError ||
     (!heroPreviewAsset ? "Loading local hero animation..." : "");
   if (!text) return;
 

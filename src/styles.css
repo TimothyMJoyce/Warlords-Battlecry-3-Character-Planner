@@ -513,8 +513,10 @@ html[data-theme="light"] .theme-icon::after {
 }
 
 .hero-preview-panel {
-  margin-top: 16px;
+  width: min(100%, 1252px);
+  margin: 16px auto 0;
   overflow: hidden;
+  grid-column: 1 / -1;
 }
 
 .hero-preview-summary {
@@ -624,7 +626,8 @@ html[data-theme="light"] .theme-icon::after {
   border-radius: 6px;
   overflow: hidden;
   background: #afc0a8;
-  width: min(100%, 1216px);
+  width: 100%;
+  max-width: 1216px;
   margin: 0 auto;
 }
 
