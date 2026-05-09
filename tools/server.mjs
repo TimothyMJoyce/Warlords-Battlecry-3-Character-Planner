@@ -15,6 +15,7 @@ import { readItemCatalog } from "./wbc3-items-reader.mjs";
 import { readSpellTextCatalog } from "./wbc3-spells-reader.mjs";
 import { readSkillTextCatalog } from "./wbc3-game-text-reader.mjs";
 import { readCommandRadiusRingAsset } from "./wbc3-selection-rings-reader.mjs";
+import { readHeroVoiceCatalog, readHeroVoiceClip } from "./wbc3-voice-reader.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const dist = resolve(root, "dist");
@@ -31,6 +32,7 @@ const commandRadiusRingCache = new Map();
 const itemCatalogCache = new Map();
 const spellTextCache = new Map();
 const skillTextCache = new Map();
+const heroVoiceCatalogCache = new Map();
 
 const sceneObjectDefinitions = {
   goldMine: {
@@ -188,6 +190,23 @@ async function handleApiRequest(request, url, response) {
   if (url.pathname === "/api/local/skills") {
     const body = await getLocalSkills();
     sendJson(response, body.ok ? 200 : 404, body);
+    return;
+  }
+
+  if (url.pathname === "/api/local/hero-voices") {
+    const body = await getLocalHeroVoices(url);
+    sendJson(response, body.ok ? 200 : 404, body);
+    return;
+  }
+
+  if (url.pathname === "/api/local/hero-voice") {
+    const body = await getLocalHeroVoice(url);
+    if (!body.ok) {
+      sendJson(response, 404, body);
+      return;
+    }
+
+    sendBinary(response, 200, body);
     return;
   }
 
@@ -481,6 +500,57 @@ async function getLocalSkills() {
   }
 }
 
+async function getLocalHeroVoices(url) {
+  try {
+    const settings = await readLocalPathSettings();
+    const raceId = String(url.searchParams.get("raceId") ?? "");
+    const cacheKey = JSON.stringify({
+      gameInstallDir: settings.gameInstallDir,
+      raceId,
+    });
+
+    if (heroVoiceCatalogCache.has(cacheKey)) {
+      return heroVoiceCatalogCache.get(cacheKey);
+    }
+
+    const body = await readHeroVoiceCatalog({
+      raceId,
+      gameInstallDir: settings.gameInstallDir,
+    });
+    heroVoiceCatalogCache.set(cacheKey, body);
+    return body;
+  } catch (error) {
+    return {
+      ok: false,
+      available: false,
+      raceId: String(url.searchParams.get("raceId") ?? ""),
+      defaultSourceVoiceId: "",
+      defaultVoiceId: "",
+      sourceVoiceIds: [],
+      voiceSets: [],
+      missingVoiceIds: [],
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+async function getLocalHeroVoice(url) {
+  try {
+    const settings = await readLocalPathSettings();
+    return await readHeroVoiceClip({
+      raceId: String(url.searchParams.get("raceId") ?? ""),
+      voiceId: String(url.searchParams.get("voiceId") ?? ""),
+      lineId: String(url.searchParams.get("lineId") ?? ""),
+      gameInstallDir: settings.gameInstallDir,
+    });
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 async function getLocalSettings() {
   return {
     ok: true,
@@ -550,6 +620,15 @@ function sendJson(response, statusCode, body) {
     "Cache-Control": "no-store",
   });
   response.end(JSON.stringify(body, null, 2));
+}
+
+function sendBinary(response, statusCode, body) {
+  response.writeHead(statusCode, {
+    "Content-Type": body.contentType ?? "application/octet-stream",
+    "Content-Length": body.body.length,
+    "Cache-Control": "no-store",
+  });
+  response.end(body.body);
 }
 
 function listen(port, attemptsLeft = 50) {

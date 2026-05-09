@@ -4,7 +4,7 @@ import {
   DEFAULT_HERO_ANIMATION_ID,
   DEFAULT_HERO_COLOR,
   DEFAULT_HERO_DIRECTION,
-  getAllAvatarOptions,
+  getAvatarOptions,
   getAvailableHeroAnimationTypes,
   getCommandRadiusSceneMetrics,
   getDefaultAvatarId,
@@ -129,6 +129,19 @@ let heroPreviewRaf = 0;
 let heroPreviewPrecacheStarted = false;
 let heroPreviewPrecacheLoaded = 0;
 let heroPreviewPrecacheTotal = 0;
+let heroVoiceCatalog = null;
+let heroVoiceCatalogRaceId = "";
+let heroVoiceCatalogRequestRaceId = "";
+let heroVoiceCatalogError = "";
+let previewVoiceId = "";
+let previewVoiceLineId = "";
+let heroVoiceAudio = null;
+let heroVoicePlaybackKey = "";
+let heroVoicePlaybackTime = 0;
+let heroVoicePlaybackDuration = 0;
+let heroVoicePlaybackProgress = 0;
+let heroVoicePlaybackRaf = 0;
+let heroVoicePlaybackResetTimer = 0;
 
 const previewAssetCache = new Map();
 const previewAssetRequests = new Map();
@@ -140,6 +153,8 @@ const heroPreviewLogicalWidth = 1216;
 const heroPreviewLogicalHeight = 912;
 const heroPreviewResolutionScale = 2;
 const heroPreviewDirectionCount = 8;
+const hiddenHeroPreviewAvatarIds = new Set(["ATHX", "AAHA", "AGHY"]);
+const hiddenHeroPreviewAnimationIds = new Set(["interface"]);
 const vanillaBaseWalkSpeed = 12;
 const vanillaBaseWalkFrameMs = 90;
 
@@ -233,7 +248,7 @@ function render() {
   const race = races.find((entry) => entry.id === build.raceId);
   const heroClass = heroClasses.find((entry) => entry.id === build.classId);
   const avatarId = currentAvatarId();
-  previewAnimationId = normalizeHeroAnimationId(avatarId, previewAnimationId);
+  previewAnimationId = normalizeHeroPreviewAnimationId(avatarId, previewAnimationId);
   previewSpellId = normalizeSpellPreviewId(previewSpellId);
 
   closeStatHoverTooltip();
@@ -406,6 +421,7 @@ function render() {
 
   bindEvents();
   precacheHeroPreviewAssets();
+  requestHeroVoiceCatalog(build.raceId);
   if (heroPreviewExpanded) {
     startHeroPreview(summary, avatarId);
   } else {
@@ -447,6 +463,9 @@ function bindEvents() {
 
   document.querySelector("#race-select").addEventListener("change", (event) => {
     const raceId = event.target.value;
+    stopHeroVoicePreviewAudio();
+    previewVoiceId = "";
+    previewVoiceLineId = "";
     build = {
       ...build,
       raceId,
@@ -556,8 +575,20 @@ function bindEvents() {
     saveCurrentBuild();
   });
 
-  document.querySelector("#hero-preview-details")?.addEventListener("toggle", (event) => {
+  const heroPreviewDetails = document.querySelector("#hero-preview-details");
+  const heroPreviewSummary = heroPreviewDetails?.querySelector(".hero-preview-summary");
+  heroPreviewSummary?.addEventListener("click", (event) => {
+    event.preventDefault();
+    if (!event.target.closest("#hero-preview-toggle")) return;
+    heroPreviewDetails.open = !heroPreviewDetails.open;
+  });
+  heroPreviewSummary?.addEventListener("keydown", (event) => {
+    if (!["Enter", " "].includes(event.key) || event.target.closest("#hero-preview-toggle")) return;
+    event.preventDefault();
+  });
+  heroPreviewDetails?.addEventListener("toggle", (event) => {
     heroPreviewExpanded = event.currentTarget.open;
+    updateHeroPreviewToggleButton();
     if (heroPreviewExpanded) {
       startHeroPreview(calculateHeroSummary(buildWithLocalItemData(build)), currentAvatarId());
     } else {
@@ -576,6 +607,23 @@ function bindEvents() {
     heroPreviewFrame = 0;
     heroPreviewFrameElapsed = 0;
     render();
+  });
+
+  document.querySelector("#hero-voice-select")?.addEventListener("change", (event) => {
+    stopHeroVoicePreviewAudio();
+    previewVoiceId = event.target.value;
+    previewVoiceLineId = "";
+    render();
+  });
+
+  document.querySelector("#hero-voice-line-select")?.addEventListener("change", (event) => {
+    stopHeroVoicePreviewAudio();
+    previewVoiceLineId = event.target.value;
+    updateHeroVoicePlaybackButton();
+  });
+
+  document.querySelector("#hero-voice-play")?.addEventListener("click", () => {
+    playHeroVoicePreview();
   });
 
   document.querySelector("#hero-spell-sphere-select")?.addEventListener("change", (event) => {
@@ -1977,13 +2025,14 @@ function formatItemPower(power) {
 }
 
 function heroPreviewPanel(summary, race, heroClass, avatarId) {
-  const animation = getHeroAnimation(previewAnimationId);
-  const availableAnimations = getAvailableHeroAnimationTypes(avatarId);
+  const availableAnimations = getHeroPreviewAnimationOptions(avatarId);
+  const animation = availableAnimations.find((item) => item.id === previewAnimationId) ?? getHeroAnimation(previewAnimationId);
   const radiusMetrics = getCommandRadiusSceneMetrics(summary.command);
-  const avatarOptions = getAllAvatarOptions();
+  const avatarOptions = getHeroPreviewAvatarOptions();
   const spell = getSpellPreview(previewSpellId);
   const spellSphereId = normalizeSpellPreviewSphereId(spell.sphereId);
   const spellGroup = getSpellPreviewGroup(spellSphereId);
+  const voiceControl = heroVoicePreviewControl(build.raceId);
   const spellControl =
     animation.id === "spell"
       ? `
@@ -2009,13 +2058,16 @@ function heroPreviewPanel(summary, race, heroClass, avatarId) {
           <span>${escapeHtml(race?.displayName ?? build.raceId)} ${escapeHtml(heroClass?.displayName ?? build.classId)} / Command ${summary.command}</span>
         </div>
         <strong id="hero-preview-cache-status">${escapeHtml(getHeroPreviewCacheStatusText())}</strong>
+        <button type="button" id="hero-preview-toggle" class="hero-preview-toggle" aria-expanded="${heroPreviewExpanded ? "true" : "false"}">
+          ${heroPreviewExpanded ? "Close" : "Open"}
+        </button>
       </summary>
       <div class="hero-preview-body">
         <div class="hero-preview-controls">
           <label>
             <span>Avatar</span>
             <select id="hero-avatar-select">
-              ${avatarOptions.map((avatar) => option(avatar.id, `${avatar.displayName} (${avatar.id})`, avatarId)).join("")}
+              ${avatarOptions.map((avatar) => option(avatar.id, avatar.displayName, avatarId)).join("")}
             </select>
           </label>
           <label>
@@ -2024,6 +2076,7 @@ function heroPreviewPanel(summary, race, heroClass, avatarId) {
               ${availableAnimations.map((item) => option(item.id, item.label, animation.id)).join("")}
             </select>
           </label>
+          ${voiceControl}
           ${spellControl}
           <label class="hero-preview-zoom-control">
             <span>Zoom</span>
@@ -2050,6 +2103,83 @@ function heroPreviewPanel(summary, race, heroClass, avatarId) {
   `;
 }
 
+function heroVoicePreviewControl(raceId) {
+  const normalizedRaceId = String(raceId ?? "");
+  if (!localPathStatus?.desktopMode) {
+    return `
+      <label>
+        <span>Voice</span>
+        <select disabled>
+          ${option("", "Local assets required", "")}
+        </select>
+      </label>
+    `;
+  }
+
+  if (heroVoiceCatalogRaceId !== normalizedRaceId || heroVoiceCatalogRequestRaceId === normalizedRaceId) {
+    return `
+      <label>
+        <span>Voice</span>
+        <select disabled>
+          ${option("", "Loading voices", "")}
+        </select>
+      </label>
+    `;
+  }
+
+  if (!heroVoiceCatalog?.available) {
+    return `
+      <label>
+        <span>Voice</span>
+        <select disabled>
+          ${option("", heroVoiceCatalogError || heroVoiceCatalog?.error || "No voice clips found", "")}
+        </select>
+      </label>
+    `;
+  }
+
+  normalizeHeroVoiceSelection();
+  const voiceOptions = getPlayableHeroVoiceSets();
+  const voiceSet = getSelectedHeroVoiceSet();
+  const clips = getSelectedHeroVoiceClips();
+  const playable = Boolean(voiceSet && clips.some((clip) => clip.id === previewVoiceLineId));
+  const isPlaying = heroVoicePlaybackKey === getHeroVoicePlaybackKey(normalizedRaceId) && Boolean(heroVoiceAudio);
+  const buttonLabel = isPlaying ? formatHeroVoicePlaybackLabel() : "Play";
+
+  return `
+    <label>
+      <span>Voice</span>
+      <select id="hero-voice-select">
+        ${voiceOptions.map((item) => heroVoiceOption(item, previewVoiceId)).join("")}
+      </select>
+    </label>
+    <label>
+      <span>Line</span>
+      <select id="hero-voice-line-select">
+        ${clips.map((item) => option(item.id, item.label, previewVoiceLineId)).join("")}
+      </select>
+    </label>
+    <div class="hero-preview-voice-actions">
+      <span>Preview</span>
+      <button
+        type="button"
+        id="hero-voice-play"
+        class="hero-voice-play-button ${isPlaying ? "is-playing" : ""}"
+        style="--voice-progress: ${Math.round(heroVoicePlaybackProgress * 100)}%;"
+        aria-label="${escapeHtml(buttonLabel === "Play" ? "Play voice preview" : `Voice preview ${buttonLabel}`)}"
+        ${playable ? "" : "disabled"}
+      >
+        <span class="hero-voice-play-progress" aria-hidden="true"></span>
+        <span class="hero-voice-play-label">${escapeHtml(buttonLabel)}</span>
+      </button>
+    </div>
+  `;
+}
+
+function heroVoiceOption(voiceSet, selectedId) {
+  return `<option value="${escapeHtml(voiceSet.id)}" ${voiceSet.id === selectedId ? "selected" : ""}>${escapeHtml(voiceSet.label)}</option>`;
+}
+
 function normalizeSpellPreviewSphereId(value) {
   const id = String(value ?? "");
   return spellPreviewGroups.some((group) => group.id === id) ? id : spellPreviewGroups[0]?.id;
@@ -2063,10 +2193,219 @@ function currentAvatarId() {
   return normalizeAvatarId(build.raceId, build.avatarId);
 }
 
+function getHeroPreviewAvatarOptions() {
+  return getAvatarOptions(build.raceId).filter((avatar) => !hiddenHeroPreviewAvatarIds.has(avatar.id));
+}
+
+function getHeroPreviewAnimationOptions(avatarId) {
+  return getAvailableHeroAnimationTypes(avatarId).filter((animation) => !hiddenHeroPreviewAnimationIds.has(animation.id));
+}
+
+function normalizeHeroPreviewAnimationId(avatarId, animationId) {
+  const animations = getHeroPreviewAnimationOptions(avatarId);
+  return animations.some((animation) => animation.id === animationId)
+    ? animationId
+    : animations.find((animation) => animation.id === DEFAULT_HERO_ANIMATION_ID)?.id ?? animations[0]?.id ?? DEFAULT_HERO_ANIMATION_ID;
+}
+
+function normalizeHeroVoiceSelection() {
+  if (!heroVoiceCatalog?.available || !Array.isArray(heroVoiceCatalog.voiceSets) || !heroVoiceCatalog.voiceSets.length) {
+    previewVoiceId = "";
+    previewVoiceLineId = "";
+    return;
+  }
+
+  const playableVoiceSets = getPlayableHeroVoiceSets();
+  const voiceSet =
+    playableVoiceSets.find((item) => item.id === previewVoiceId) ??
+    playableVoiceSets.find((item) => item.id === heroVoiceCatalog.defaultVoiceId) ??
+    playableVoiceSets[0] ??
+    heroVoiceCatalog.voiceSets[0];
+  previewVoiceId = voiceSet.id;
+
+  const clips = Array.isArray(voiceSet.clips) ? voiceSet.clips : [];
+  const clip =
+    clips.find((item) => item.id === previewVoiceLineId) ??
+    clips.find((item) => item.id === "Deathblow") ??
+    clips.find((item) => item.id === "Select1") ??
+    clips[0];
+  previewVoiceLineId = clip?.id ?? "";
+}
+
+function getPlayableHeroVoiceSets() {
+  if (!Array.isArray(heroVoiceCatalog?.voiceSets)) return [];
+  return heroVoiceCatalog.voiceSets.filter((item) => item.available !== false && item.sourceAssigned !== false);
+}
+
+function getSelectedHeroVoiceSet() {
+  return getPlayableHeroVoiceSets().find((item) => item.id === previewVoiceId) ?? null;
+}
+
+function getSelectedHeroVoiceClips() {
+  const voiceSet = getSelectedHeroVoiceSet();
+  if (!voiceSet?.clips?.length) return [];
+  return voiceSet.clips;
+}
+
+function requestHeroVoiceCatalog(raceId) {
+  const normalizedRaceId = String(raceId ?? "");
+  if (!localPathStatus?.desktopMode || !normalizedRaceId) return;
+  if (heroVoiceCatalogRaceId === normalizedRaceId || heroVoiceCatalogRequestRaceId === normalizedRaceId) return;
+
+  heroVoiceCatalogRequestRaceId = normalizedRaceId;
+  heroVoiceCatalogError = "";
+  fetch(`/api/local/hero-voices?raceId=${encodeURIComponent(normalizedRaceId)}`, { cache: "no-store" })
+    .then((response) => response.json().catch(() => null).then((body) => ({ ok: response.ok, body })))
+    .then(({ ok, body }) => {
+      if (heroVoiceCatalogRequestRaceId !== normalizedRaceId) return;
+      heroVoiceCatalogRequestRaceId = "";
+      heroVoiceCatalogRaceId = normalizedRaceId;
+      heroVoiceCatalog = body;
+      heroVoiceCatalogError = ok && body?.ok ? "" : body?.error || "Hero voices are unavailable.";
+      normalizeHeroVoiceSelection();
+      render();
+    })
+    .catch((error) => {
+      if (heroVoiceCatalogRequestRaceId !== normalizedRaceId) return;
+      heroVoiceCatalogRequestRaceId = "";
+      heroVoiceCatalogRaceId = normalizedRaceId;
+      heroVoiceCatalog = null;
+      heroVoiceCatalogError = error instanceof Error ? error.message : "Hero voices are unavailable.";
+      render();
+    });
+}
+
+function getHeroVoicePlaybackKey(raceId = build.raceId, voiceId = previewVoiceId, lineId = previewVoiceLineId) {
+  return [raceId, voiceId, lineId].map((value) => String(value ?? "")).join(":");
+}
+
+async function playHeroVoicePreview() {
+  normalizeHeroVoiceSelection();
+  if (!heroVoiceCatalog?.available || !previewVoiceId || !previewVoiceLineId) return;
+  const playbackKey = getHeroVoicePlaybackKey();
+
+  const url = new URL("/api/local/hero-voice", window.location.origin);
+  url.searchParams.set("raceId", build.raceId);
+  url.searchParams.set("voiceId", previewVoiceId);
+  url.searchParams.set("lineId", previewVoiceLineId);
+  url.searchParams.set("t", String(Date.now()));
+
+  try {
+    stopHeroVoicePreviewAudio({ updateButton: false });
+    heroVoiceAudio = new Audio(url.toString());
+    heroVoicePlaybackKey = playbackKey;
+    heroVoicePlaybackTime = 0;
+    heroVoicePlaybackDuration = 0;
+    heroVoicePlaybackProgress = 0;
+    heroVoiceAudio.addEventListener("loadedmetadata", updateHeroVoicePlaybackButton);
+    heroVoiceAudio.addEventListener("durationchange", updateHeroVoicePlaybackButton);
+    heroVoiceAudio.addEventListener("ended", finishHeroVoicePlayback);
+    updateHeroVoicePlaybackButton();
+    await heroVoiceAudio.play();
+    startHeroVoicePlaybackProgress();
+  } catch (error) {
+    stopHeroVoicePreviewAudio();
+    heroVoiceCatalogError = error instanceof Error ? error.message : "Voice playback failed.";
+    render();
+  }
+}
+
+function stopHeroVoicePreviewAudio(options = {}) {
+  const updateButton = options.updateButton !== false;
+  if (heroVoiceAudio) {
+    heroVoiceAudio.pause();
+    heroVoiceAudio.src = "";
+    heroVoiceAudio = null;
+  }
+  resetHeroVoicePlaybackProgress(updateButton);
+}
+
+function startHeroVoicePlaybackProgress() {
+  if (heroVoicePlaybackRaf) window.cancelAnimationFrame(heroVoicePlaybackRaf);
+  if (heroVoicePlaybackResetTimer) window.clearTimeout(heroVoicePlaybackResetTimer);
+  heroVoicePlaybackResetTimer = 0;
+
+  const tick = () => {
+    updateHeroVoicePlaybackState();
+    updateHeroVoicePlaybackButton();
+    if (heroVoiceAudio && !heroVoiceAudio.paused && !heroVoiceAudio.ended) {
+      heroVoicePlaybackRaf = window.requestAnimationFrame(tick);
+      return;
+    }
+    heroVoicePlaybackRaf = 0;
+  };
+
+  tick();
+}
+
+function finishHeroVoicePlayback() {
+  if (heroVoicePlaybackRaf) window.cancelAnimationFrame(heroVoicePlaybackRaf);
+  heroVoicePlaybackRaf = 0;
+  updateHeroVoicePlaybackState();
+  if (heroVoicePlaybackDuration > 0) {
+    heroVoicePlaybackTime = heroVoicePlaybackDuration;
+    heroVoicePlaybackProgress = 1;
+  }
+  updateHeroVoicePlaybackButton();
+  const completedKey = heroVoicePlaybackKey;
+  heroVoicePlaybackResetTimer = window.setTimeout(() => {
+    if (heroVoicePlaybackKey !== completedKey) return;
+    heroVoiceAudio = null;
+    resetHeroVoicePlaybackProgress();
+  }, 800);
+}
+
+function resetHeroVoicePlaybackProgress(updateButton = true) {
+  if (heroVoicePlaybackRaf) window.cancelAnimationFrame(heroVoicePlaybackRaf);
+  if (heroVoicePlaybackResetTimer) window.clearTimeout(heroVoicePlaybackResetTimer);
+  heroVoicePlaybackKey = "";
+  heroVoicePlaybackTime = 0;
+  heroVoicePlaybackDuration = 0;
+  heroVoicePlaybackProgress = 0;
+  heroVoicePlaybackRaf = 0;
+  heroVoicePlaybackResetTimer = 0;
+  if (updateButton) updateHeroVoicePlaybackButton();
+}
+
+function updateHeroVoicePlaybackState() {
+  if (!heroVoiceAudio) return;
+  const duration = Number.isFinite(heroVoiceAudio.duration) ? Math.max(0, heroVoiceAudio.duration) : 0;
+  const currentTime = Number.isFinite(heroVoiceAudio.currentTime) ? Math.max(0, heroVoiceAudio.currentTime) : 0;
+  heroVoicePlaybackDuration = duration;
+  heroVoicePlaybackTime = duration > 0 ? Math.min(currentTime, duration) : currentTime;
+  heroVoicePlaybackProgress = duration > 0 ? Math.max(0, Math.min(1, heroVoicePlaybackTime / duration)) : 0;
+}
+
+function updateHeroVoicePlaybackButton() {
+  updateHeroVoicePlaybackState();
+  const button = document.querySelector("#hero-voice-play");
+  if (!button) return;
+
+  const selectedKey = getHeroVoicePlaybackKey();
+  const isActive = Boolean(heroVoiceAudio) && heroVoicePlaybackKey === selectedKey;
+  const label = isActive ? formatHeroVoicePlaybackLabel() : "Play";
+  button.style.setProperty("--voice-progress", `${Math.round((isActive ? heroVoicePlaybackProgress : 0) * 100)}%`);
+  button.classList.toggle("is-playing", isActive);
+  button.setAttribute("aria-label", label === "Play" ? "Play voice preview" : `Voice preview ${label}`);
+  const labelElement = button.querySelector(".hero-voice-play-label");
+  if (labelElement) labelElement.textContent = label;
+}
+
+function formatHeroVoicePlaybackLabel() {
+  const current = formatHeroVoicePlaybackTime(heroVoicePlaybackTime);
+  const duration = heroVoicePlaybackDuration > 0 ? formatHeroVoicePlaybackTime(heroVoicePlaybackDuration) : "--";
+  return `${current} / ${duration}`;
+}
+
+function formatHeroVoicePlaybackTime(value) {
+  const seconds = Math.max(0, Number(value) || 0);
+  return `${seconds.toFixed(seconds >= 10 ? 0 : 1)}s`;
+}
+
 function selectHeroPreviewAvatar(avatarId, options = {}) {
   const nextAvatarId = normalizeAvatarId(build.raceId, avatarId);
   build = { ...build, avatarId: nextAvatarId };
-  previewAnimationId = normalizeHeroAnimationId(nextAvatarId, previewAnimationId);
+  previewAnimationId = normalizeHeroPreviewAnimationId(nextAvatarId, previewAnimationId);
   render();
 
   if (options.refocus) {
@@ -2384,6 +2723,14 @@ function getHeroPreviewCacheStatusText() {
 function updateHeroPreviewCacheStatus() {
   const status = document.querySelector("#hero-preview-cache-status");
   if (status) status.textContent = getHeroPreviewCacheStatusText();
+}
+
+function updateHeroPreviewToggleButton() {
+  const details = document.querySelector("#hero-preview-details");
+  const button = document.querySelector("#hero-preview-toggle");
+  if (!details || !button) return;
+  button.textContent = details.open ? "Close" : "Open";
+  button.setAttribute("aria-expanded", details.open ? "true" : "false");
 }
 
 function drawHeroPreview(canvas, summary, animation, timestamp) {
@@ -3751,6 +4098,11 @@ async function saveLocalPathSettings(form) {
     }
 
     localPathStatus = body.pathStatus ?? localPathStatus;
+    stopHeroVoicePreviewAudio();
+    heroVoiceCatalog = null;
+    heroVoiceCatalogRaceId = "";
+    heroVoiceCatalogRequestRaceId = "";
+    heroVoiceCatalogError = "";
     localSettingsStatus = "Paths saved.";
     loadLocalItems();
     loadLocalSpellText();

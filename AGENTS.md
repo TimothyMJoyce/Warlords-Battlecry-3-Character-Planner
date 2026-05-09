@@ -16,7 +16,9 @@ The desired end state is a usable program, likely a TypeScript and React applica
 
 ## Working Principles
 
-- Treat verified WBC3 mechanics data as the authority for planner behavior.
+- Treat the shipped WBC3 source and verified installed game assets as the authority for planner behavior.
+- Treat alternate local source trees and comparison-only code as private context only; do not use them to drive planner behavior or data changes unless the user explicitly asks.
+- When shipped WBC3 source, installed assets, spreadsheet logic, and comparison-only material disagree, prefer shipped WBC3 source/verified game assets and document the disagreement before choosing behavior.
 - Treat the spreadsheet as a useful reference for structure, formulas, and user expectations.
 - Keep extracted game data separate from UI code.
 - Prefer explicit data models over spreadsheet-like hidden logic.

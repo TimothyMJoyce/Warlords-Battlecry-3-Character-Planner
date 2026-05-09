@@ -5,6 +5,7 @@ import { getDefaultPortraitId, getPortraitFileName, getPortraitOptions } from ".
 import {
   avatarIdsByRace,
   getAllAvatarOptions,
+  getAvatarOptions,
   getAvailableHeroAnimationTypes,
   getCommandRadiusSceneMetrics,
   getDefaultAvatarId,
@@ -29,11 +30,31 @@ import {
   spellScalingSummaryCount,
   spellPreviewSpells,
 } from "../src/data/spellEffects.js";
-import { readAvatarAnimationAsset, readEffectAnimationAsset, readSpriteAnimationAsset } from "./wbc3-animation-reader.mjs";
+import {
+  getAssignedHeroVoiceIds,
+  getAllHeroVoiceIds,
+  getDefaultHeroVoiceId,
+  heroVoiceLineTypes,
+  heroVoiceProfiles,
+  heroVoiceSetsById,
+} from "../src/data/heroVoices.js";
+import {
+  decodeRleImage,
+  findXcrResource,
+  readAnimationInfo,
+  readAvatarAnimationAsset,
+  readEffectAnimationAsset,
+  readSpriteAnimationAsset,
+  readXcrResource,
+  readXcrResourceByName,
+  readXcrResources,
+} from "./wbc3-animation-reader.mjs";
+import { resolveSideArchivePath } from "./wbc3-paths.mjs";
 import { readTerrainTileAsset } from "./wbc3-terrain-reader.mjs";
 import { parseItemConfig, parseItemXml, readItemCatalog } from "./wbc3-items-reader.mjs";
 import { parseSpellTextCatalog } from "./wbc3-spells-reader.mjs";
 import { buildSkillTextCatalog, parseGameText, readSkillTextCatalog } from "./wbc3-game-text-reader.mjs";
+import { readHeroVoiceCatalog, readHeroVoiceClip } from "./wbc3-voice-reader.mjs";
 import {
   calculateAttackSpeed,
   calculateArmyLimitBonus,
@@ -93,6 +114,18 @@ function parseIcoEntries(buffer) {
   });
 }
 
+function countVisiblePurpleMaskPixels(rgba) {
+  let count = 0;
+  for (let index = 0; index < rgba.length; index += 4) {
+    const red = rgba[index];
+    const green = rgba[index + 1];
+    const blue = rgba[index + 2];
+    const alpha = rgba[index + 3];
+    if (alpha > 0 && red > 120 && green < 40 && blue > 120) count += 1;
+  }
+  return count;
+}
+
 const baseBuild = {
   raceId: "barbarian",
   classId: "chieftain",
@@ -119,11 +152,17 @@ assert.equal(getPortraitFileName(7), "Portrait07.bmp");
 assert.deepEqual(getPortraitOptions("ssrathi"), [13, 82, 84]);
 assert.equal(getDefaultAvatarId("knight"), "AHHX");
 assert.equal(getDefaultAvatarId("plaguelord"), "AHH1");
-assert.deepEqual(avatarIdsByRace.knight, ["AHHX", "AFHX", "AHH0", "AHH1", "AEHX", "APHX"]);
+assert.deepEqual(avatarIdsByRace.knight, ["AHHX", "AFHX", "AHH0", "AHH1", "AEHX"]);
+assert.deepEqual(avatarIdsByRace.dwarf, ["ADHX", "AAHX"]);
+assert.deepEqual(avatarIdsByRace.empire, ["APHX", "AHHX", "AFHX", "AHH0", "AHH1", "AEHX"]);
 assert.deepEqual(avatarIdsByRace.ssrathi, ["ALHX"]);
+assert.deepEqual(avatarIdsByRace.plaguelord, ["AHH1", "AUHX", "AKHX"]);
+assert.deepEqual(getAvatarOptions("knight").map((avatar) => avatar.id), ["AHHX", "AFHX", "AHH0", "AHH1", "AEHX"]);
 assert.equal(getAllAvatarOptions().some((avatar) => avatar.id === "AVHX"), true);
 assert.equal(getAllAvatarOptions().some((avatar) => avatar.id === "AGHY"), true);
-assert.equal(normalizeAvatarId("knight", "AVHX"), "AVHX");
+assert.equal(normalizeAvatarId("knight", "AVHX"), "AHHX");
+assert.equal(normalizeAvatarId("knight", "AFHX"), "AFHX");
+assert.equal(normalizeAvatarId("daemon", "AVHX"), "AVHX");
 assert.deepEqual(
   getAvailableHeroAnimationTypes("AHHX").map((animation) => animation.id),
   ["stand", "walk", "fight", "die", "ambient", "convert", "spell", "interface"],
@@ -150,6 +189,19 @@ assert.deepEqual(getSpellPreviewEffectIds(getSpellPreview("destruction")), ["EAR
 assert.equal(getSpellPreview("not-real").id, "healSelf");
 assert.equal(getSpellPreview("healSelf").gameTextIndex, 0);
 assert.equal(getSpellPreview("breathOfDying").gameTextIndex, 139);
+assert.equal(heroVoiceProfiles.length, 16);
+assert.equal(heroVoiceLineTypes.length, 14);
+assert.equal(getAllHeroVoiceIds().length, 20);
+assert.equal(getAllHeroVoiceIds().includes("AVHX"), true);
+assert.equal(getDefaultHeroVoiceId("knight"), "AHHX");
+assert.equal(getDefaultHeroVoiceId("daemon"), "AVHX");
+assert.equal(getDefaultHeroVoiceId("ssrathi"), "AXH0");
+assert.deepEqual(getAssignedHeroVoiceIds("knight"), ["AHHX", "AXH3", "AFHX", "AEHX", "AWHX", "AXH0", "AXH2"]);
+assert.deepEqual(getAssignedHeroVoiceIds("plaguelord"), ["AXH5", "AUHX", "ABHX", "AOHX", "AVHX", "AXH0", "AXH7", "AKHX", "AXH2"]);
+assert.equal(heroVoiceSetsById.AHHX.archive, "KnightsVoicesEn.xcr");
+assert.equal(heroVoiceSetsById.AHHX.label, "Noble Male");
+assert.equal(heroVoiceSetsById.AXH3.archive, "DefaultVoicesEn.xcr");
+assert.equal(heroVoiceSetsById.AXH3.label, "Knightly Male");
 assert.equal(getSpellRankForMagicSkill(0, 1), 0);
 assert.equal(getSpellRankForMagicSkill(1, 1), 1);
 assert.equal(getSpellRankForMagicSkill(1, 2), 0);
@@ -311,6 +363,16 @@ assert.match(appSource, /api\/local\/effect/);
 assert.match(appSource, /api\/local\/items/);
 assert.match(appSource, /hero-spell-select/);
 assert.match(appSource, /hero-spell-sphere-select/);
+assert.match(appSource, /id="hero-preview-toggle"/);
+assert.match(appSource, /event\.target\.closest\("#hero-preview-toggle"\)/);
+assert.match(appSource, /getAvatarOptions\(build\.raceId\)/);
+assert.match(appSource, /heroVoiceOption/);
+assert.match(appSource, /getPlayableHeroVoiceSets/);
+assert.match(appSource, /sourceAssigned !== false/);
+assert.match(appSource, /hero-voice-play-progress/);
+assert.match(appSource, /item\.id === "Deathblow"/);
+assert.match(appSource, /formatHeroVoicePlaybackLabel/);
+assert.match(appSource, /requestAnimationFrame\(tick\)/);
 assert.match(appSource, /api\/local\/skills/);
 assert.match(appSource, /data-spell-sphere-id/);
 assert.match(appSource, /skillDescriptionCell/);
@@ -831,6 +893,17 @@ try {
   assert.equal(avatarAsset.visiblePixelCount > 10000, true);
   assert.equal(avatarAsset.imageSrc.startsWith("data:image/png;base64,iVBORw0KGgo"), true);
 
+  const highElfArchive = await readFile(await resolveSideArchivePath("HighElves.xcr"));
+  const highElfResources = readXcrResources(highElfArchive);
+  const highElfAnimationInfo = readAnimationInfo(readXcrResourceByName(highElfArchive, highElfResources, "AEHX.ANI"));
+  const highElfAmbientAnimation = heroAnimationTypes.find((animation) => animation.id === "ambient");
+  const highElfAmbientResource = findXcrResource(highElfResources, "AEHXA.RLE");
+  const highElfAmbientRle = decodeRleImage(readXcrResource(highElfArchive, highElfAmbientResource), {
+    effects: highElfAnimationInfo[highElfAmbientAnimation.index].effects,
+    sideColor: 0,
+  });
+  assert.equal(countVisiblePurpleMaskPixels(highElfAmbientRle.rgba), 0);
+
   const goldMineAsset = await readSpriteAnimationAsset({
     spriteId: "BRG0",
     archiveName: "Resources.xcr",
@@ -996,6 +1069,40 @@ try {
   assert.equal(skillTextCatalog.ok, true);
   assert.equal(skillTextCatalog.skills.find((skill) => skill.id === "vampirism").descriptionTemplate, "Steal +%d life with each hit in melee");
   assert.equal(skillTextCatalog.skills.find((skill) => skill.id === "magicTime").name, "Time Magic");
+
+  const knightVoiceCatalog = await readHeroVoiceCatalog({ raceId: "knight" });
+  assert.equal(knightVoiceCatalog.ok, true);
+  assert.equal(knightVoiceCatalog.available, true);
+  assert.equal(knightVoiceCatalog.defaultSourceVoiceId, "AHHX");
+  assert.equal(knightVoiceCatalog.defaultVoiceId, "AHHX");
+  assert.deepEqual(knightVoiceCatalog.sourceVoiceIds, ["AHHX", "AXH3", "AFHX", "AEHX", "AWHX", "AXH0", "AXH2"]);
+  assert.equal(knightVoiceCatalog.voiceSets.length, 7);
+  assert.equal(knightVoiceCatalog.voiceSets.every((voiceSet) => voiceSet.sourceAssigned), true);
+  assert.equal(knightVoiceCatalog.voiceSets.every((voiceSet) => voiceSet.available), true);
+  assert.equal(knightVoiceCatalog.voiceSets.some((voiceSet) => voiceSet.id === "ADHX"), false);
+  assert.equal(knightVoiceCatalog.voiceSets.some((voiceSet) => voiceSet.id === "AVHX"), false);
+  assert.equal(knightVoiceCatalog.voiceSets.find((voiceSet) => voiceSet.id === "AXH2").clips.length, 14);
+  assert.equal(knightVoiceCatalog.voiceSets.find((voiceSet) => voiceSet.id === "AXH7"), undefined);
+  assert.deepEqual(knightVoiceCatalog.missingVoiceIds, []);
+  assert.equal(knightVoiceCatalog.voiceSets.find((voiceSet) => voiceSet.id === "AXH3").clips.length, 14);
+  assert.equal(knightVoiceCatalog.voiceSets.find((voiceSet) => voiceSet.id === "AXH3").archive, "DefaultVoicesEn.xcr");
+
+  const ssrathiVoiceCatalog = await readHeroVoiceCatalog({ raceId: "ssrathi" });
+  assert.equal(ssrathiVoiceCatalog.ok, true);
+  assert.equal(ssrathiVoiceCatalog.available, true);
+  assert.equal(ssrathiVoiceCatalog.defaultSourceVoiceId, "AXH0");
+  assert.equal(ssrathiVoiceCatalog.defaultVoiceId, "AXH0");
+  assert.deepEqual(ssrathiVoiceCatalog.sourceVoiceIds, ["AXH0", "AXH5", "AXH7", "AVHX"]);
+  assert.equal(ssrathiVoiceCatalog.voiceSets.length, 4);
+  assert.equal(ssrathiVoiceCatalog.voiceSets.find((voiceSet) => voiceSet.id === "AXH7").available, true);
+  assert.equal(ssrathiVoiceCatalog.voiceSets.find((voiceSet) => voiceSet.id === "AHHX"), undefined);
+  assert.equal(ssrathiVoiceCatalog.voiceSets.find((voiceSet) => voiceSet.id === "AVHX").available, true);
+
+  const voiceClip = await readHeroVoiceClip({ raceId: "knight", voiceId: "AXH3", lineId: "Select1" });
+  assert.equal(voiceClip.ok, true);
+  assert.equal(voiceClip.contentType, "audio/wav");
+  assert.equal(voiceClip.fileName, "AXH3Select1.wav");
+  assert.equal(voiceClip.body.subarray(0, 4).toString("ascii"), "RIFF");
 
   const healingEffectAsset = await readEffectAnimationAsset({ effectId: "EZ11" });
   assert.equal(healingEffectAsset.ok, true);

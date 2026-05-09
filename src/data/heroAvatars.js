@@ -46,7 +46,7 @@ export const heroAvatars = [
 ];
 
 export const avatarIdsByRace = {
-  knight: ["AHHX", "AFHX", "AHH0", "AHH1", "AEHX", "APHX"],
+  knight: ["AHHX", "AFHX", "AHH0", "AHH1", "AEHX"],
   dwarf: ["ADHX", "AAHX"],
   undead: ["AUHX", "AKHX", "AHH1"],
   barbarian: ["AMHX", "AWHX"],
@@ -61,7 +61,7 @@ export const avatarIdsByRace = {
   empire: ["APHX", "AHHX", "AFHX", "AHH0", "AHH1", "AEHX"],
   ssrathi: ["ALHX"],
   swarm: ["ARHX"],
-  plaguelord: ["AHH1", "AUHX", "AKHX", "AGHY"],
+  plaguelord: ["AHH1", "AUHX", "AKHX"],
 };
 
 export const heroAvatarsById = Object.fromEntries(heroAvatars.map((avatar) => [avatar.id, avatar]));
@@ -84,7 +84,7 @@ export function getAllAvatarOptions() {
 
 export function normalizeAvatarId(raceId, avatarId) {
   const normalizedAvatarId = String(avatarId ?? "").toUpperCase();
-  return heroAvatarsById[normalizedAvatarId] ? normalizedAvatarId : getDefaultAvatarId(raceId);
+  return avatarIdsByRace[raceId]?.includes(normalizedAvatarId) ? normalizedAvatarId : getDefaultAvatarId(raceId);
 }
 
 export function getHeroAnimation(animationId) {

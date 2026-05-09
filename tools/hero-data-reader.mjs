@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { calculateStartingStats, mergeCareerSkills } from "../src/rules/plannerRules.js";
 import { heroClasses, races, skills } from "../src/data/gameData.js";
-import { getDefaultAvatarId, heroAvatarsById } from "../src/data/heroAvatars.js";
+import { normalizeAvatarId } from "../src/data/heroAvatars.js";
 import { portableArchiveLabel } from "./wbc3-paths.mjs";
 
 const resourceHeaderSize = 532;
@@ -124,7 +124,7 @@ function parseHero(bytes, resourceName, fileIndex = 0) {
   const raceId = races[raceIndex]?.id;
   const classId = heroClasses[classIndex]?.id;
   const avatarCode = readFourCC(bytes, 92);
-  const avatarId = heroAvatarsById[avatarCode] ? avatarCode : getDefaultAvatarId(raceId);
+  const avatarId = normalizeAvatarId(raceId, avatarCode);
 
   if (!raceId || !classId) {
     throw new Error(`Unsupported race/class in ${resourceName}: race ${raceIndex}, class ${classIndex}`);

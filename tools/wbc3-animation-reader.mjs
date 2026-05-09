@@ -11,6 +11,7 @@ const rleBlockWidth = 128;
 const animationTypeSize = 26;
 const animationTypeCount = 9;
 const sideColorCount = 15;
+const animationEffectShadow = 1;
 const shadowPixelColor = { red: 22, green: 27, blue: 24, alpha: 255 };
 const crc32Table = createCrc32Table();
 const effectSpriteAliases = {
@@ -118,6 +119,7 @@ export async function readSpriteAnimationAsset({
   const rle = decodeRleImage(readXcrResource(archive, imageResource), {
     paletteType,
     sideColor,
+    effects: animationType.effects,
   });
   const visiblePixelCount = countVisiblePixels(rle.rgba);
 
@@ -304,6 +306,18 @@ export function decodeRleImage(buffer, options = {}) {
           continue;
         }
 
+        if (isShadowEffectPixel(value, options.effects, 0)) {
+          writePalettePixel(rgba, width, blockX + x, y, shadowPixelColor, getShadowEffectAlpha(value - 246));
+          x += 1;
+          continue;
+        }
+
+        if (isShadowEffectPixel(value, options.effects, 1)) {
+          writePalettePixel(rgba, width, blockX + x, y, shadowPixelColor, getShadowEffectAlpha(value - 238));
+          x += 1;
+          continue;
+        }
+
         writePalettePixel(rgba, width, blockX + x, y, palette[value], 255);
         x += 1;
       }
@@ -403,6 +417,17 @@ function applySideColorZero(palette) {
       alpha: 255,
     };
   }
+}
+
+function isShadowEffectPixel(value, effects, effectIndex) {
+  if (effects?.[effectIndex] !== animationEffectShadow) return false;
+  if (effectIndex === 0) return value >= 247 && value < 255;
+  return value >= 239 && value < 247;
+}
+
+function getShadowEffectAlpha(shadowIndex) {
+  const clamped = Math.max(1, Math.min(8, Math.trunc(Number(shadowIndex) || 1)));
+  return Math.max(46, 110 - (clamped - 1) * 8);
 }
 
 function writePalettePixel(rgba, width, x, y, color, alpha) {
