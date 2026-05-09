@@ -774,6 +774,103 @@ input {
   color: var(--ink);
 }
 
+.choice-menu {
+  position: relative;
+  width: 100%;
+}
+
+.choice-menu summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 9px 11px;
+  background: var(--control-bg);
+  color: var(--ink);
+  cursor: pointer;
+  list-style: none;
+}
+
+.choice-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.choice-menu summary::after {
+  content: "";
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 6px solid var(--muted);
+  flex: 0 0 auto;
+}
+
+.choice-menu[open] summary {
+  border-color: var(--blue);
+  background: var(--active-bg);
+}
+
+.choice-menu[open] summary::after {
+  transform: rotate(180deg);
+}
+
+.choice-menu-value {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 0.92rem;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.choice-options {
+  position: absolute;
+  z-index: 45;
+  top: calc(100% + 5px);
+  left: 0;
+  right: 0;
+  display: grid;
+  gap: 1px;
+  max-height: min(520px, calc(100vh - 132px));
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px;
+  background: var(--panel);
+  box-shadow: var(--menu-shadow);
+}
+
+.choice-option {
+  width: 100%;
+  min-height: 26px;
+  border-color: transparent;
+  border-radius: 4px;
+  padding: 4px 7px;
+  background: transparent;
+  text-align: left;
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.choice-option:hover,
+.choice-option:focus-visible {
+  border-color: var(--green);
+  background: var(--button-bg);
+  outline: none;
+}
+
+.choice-option.is-selected {
+  border-color: var(--blue);
+  background: var(--active-bg);
+  color: var(--blue);
+}
+
 .level-control {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

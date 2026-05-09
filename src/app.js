@@ -102,6 +102,7 @@ let itemSlotFilter = "all";
 let itemSearchPage = 0;
 let moraleViewMode = "racial";
 let tooltipDismissHandlersBound = false;
+let buildChoiceDismissHandlersBound = false;
 let statHoverTooltipElement = null;
 let activeStatHoverAnchor = null;
 let previewAnimationId = DEFAULT_HERO_ANIMATION_ID;
@@ -307,18 +308,14 @@ function render() {
               value="${escapeHtml(build.name ?? "")}"
             />
           </label>
-          <label class="field">
-            <span>Race</span>
-            <select id="race-select">
-              ${races.map((item) => option(item.id, item.displayName, build.raceId)).join("")}
-            </select>
-          </label>
-          <label class="field">
-            <span>Class</span>
-            <select id="class-select">
-              ${classOptions.map((item) => option(item.id, item.displayName, build.classId)).join("")}
-            </select>
-          </label>
+          <div class="field">
+            <span id="race-choice-label">Race</span>
+            ${choiceDropdown("race", "Race", races, build.raceId)}
+          </div>
+          <div class="field">
+            <span id="class-choice-label">Class</span>
+            ${choiceDropdown("class", "Class", classOptions, build.classId)}
+          </div>
           <div class="field">
             <span>Level</span>
             <div class="level-control">
@@ -461,25 +458,12 @@ function bindEvents() {
     rememberCurrentDraft();
   });
 
-  document.querySelector("#race-select").addEventListener("change", (event) => {
-    const raceId = event.target.value;
-    stopHeroVoicePreviewAudio();
-    previewVoiceId = "";
-    previewVoiceLineId = "";
-    build = {
-      ...build,
-      raceId,
-      avatarId: getDefaultAvatarId(raceId),
-      portraitId: getDefaultPortraitId(raceId),
-      skillAllocation: {},
-    };
-    render();
+  document.querySelectorAll("[data-choice-type]").forEach((button) => {
+    button.addEventListener("click", () => {
+      selectBuildChoice(button.dataset.choiceType, button.dataset.choiceId);
+    });
   });
-
-  document.querySelector("#class-select").addEventListener("change", (event) => {
-    build = { ...build, classId: event.target.value, skillAllocation: {} };
-    render();
-  });
+  bindBuildChoiceKeyboard();
 
   document.querySelector("#level-input").addEventListener("input", (event) => {
     build = { ...build, level: clampLevel(event.target.value) };
@@ -779,6 +763,119 @@ function isTextEditingControl(target) {
   const element = target instanceof HTMLElement ? target : null;
   if (!element) return false;
   return element.matches("input:not([type='button']):not([type='submit']):not([type='reset']), textarea, [contenteditable='true']");
+}
+
+function selectBuildChoice(type, value) {
+  if (type === "race") {
+    const raceId = value;
+    stopHeroVoicePreviewAudio();
+    previewVoiceId = "";
+    previewVoiceLineId = "";
+    build = {
+      ...build,
+      raceId,
+      avatarId: getDefaultAvatarId(raceId),
+      portraitId: getDefaultPortraitId(raceId),
+      skillAllocation: {},
+    };
+    render();
+    return;
+  }
+
+  if (type === "class") {
+    build = { ...build, classId: value, skillAllocation: {} };
+    render();
+  }
+}
+
+function bindBuildChoiceKeyboard() {
+  const menus = Array.from(document.querySelectorAll(".choice-menu"));
+  for (const menu of menus) {
+    const summary = menu.querySelector("summary");
+    const options = menu.querySelector(".choice-options");
+
+    menu.addEventListener("toggle", () => {
+      if (!menu.open) return;
+      for (const otherMenu of menus) {
+        if (otherMenu !== menu) otherMenu.open = false;
+      }
+    });
+
+    summary?.addEventListener("keydown", (event) => {
+      if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+      event.preventDefault();
+      menu.open = true;
+      focusBuildChoiceOption(menu, event.key === "ArrowUp" || event.key === "End" ? "last" : "selected");
+    });
+
+    options?.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeBuildChoiceMenu(menu);
+        return;
+      }
+
+      if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+      event.preventDefault();
+
+      const buttons = getBuildChoiceButtons(menu);
+      const currentIndex = buttons.indexOf(event.target);
+      if (!buttons.length) return;
+
+      let nextIndex = currentIndex;
+      if (event.key === "ArrowDown") nextIndex = currentIndex + 1;
+      if (event.key === "ArrowUp") nextIndex = currentIndex - 1;
+      if (event.key === "Home") nextIndex = 0;
+      if (event.key === "End") nextIndex = buttons.length - 1;
+      if (currentIndex < 0) nextIndex = 0;
+
+      focusBuildChoiceButton(buttons[Math.max(0, Math.min(buttons.length - 1, nextIndex))]);
+    });
+  }
+
+  bindBuildChoiceDismissHandlers();
+}
+
+function bindBuildChoiceDismissHandlers() {
+  if (buildChoiceDismissHandlersBound) return;
+  buildChoiceDismissHandlersBound = true;
+
+  document.addEventListener("pointerdown", (event) => {
+    if (event.target?.closest?.(".choice-menu")) return;
+    closeBuildChoiceMenus();
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeBuildChoiceMenus();
+  });
+}
+
+function focusBuildChoiceOption(menu, mode = "selected") {
+  const buttons = getBuildChoiceButtons(menu);
+  if (!buttons.length) return;
+  const selectedIndex = buttons.findIndex((button) => button.getAttribute("aria-selected") === "true");
+  const fallbackIndex = mode === "last" ? buttons.length - 1 : 0;
+  focusBuildChoiceButton(buttons[selectedIndex >= 0 && mode === "selected" ? selectedIndex : fallbackIndex]);
+}
+
+function focusBuildChoiceButton(button) {
+  button?.focus();
+  button?.scrollIntoView({ block: "nearest" });
+}
+
+function closeBuildChoiceMenu(menu) {
+  menu.open = false;
+  menu.querySelector("summary")?.focus();
+}
+
+function closeBuildChoiceMenus() {
+  for (const menu of document.querySelectorAll(".choice-menu[open]")) {
+    menu.open = false;
+  }
+}
+
+function getBuildChoiceButtons(menu) {
+  return Array.from(menu.querySelectorAll("[data-choice-type]"));
 }
 
 function bindPortraitPickerKeyboard() {
@@ -1334,6 +1431,37 @@ function applyTheme(nextTheme) {
 
 function option(id, label, selectedId) {
   return `<option value="${escapeHtml(id)}" ${id === selectedId ? "selected" : ""}>${escapeHtml(label)}</option>`;
+}
+
+function choiceDropdown(type, label, items, selectedId) {
+  const selectedItem = items.find((item) => String(item.id) === String(selectedId)) ?? items[0];
+  return `
+    <details class="choice-menu" data-choice-menu="${escapeHtml(type)}">
+      <summary aria-labelledby="${escapeHtml(`${type}-choice-label`)}">
+        <span class="choice-menu-value">${escapeHtml(selectedItem?.displayName ?? selectedItem?.label ?? selectedId)}</span>
+      </summary>
+      <div class="choice-options" role="listbox" aria-label="${escapeHtml(label)}">
+        ${items.map((item) => choiceOption(type, item, selectedId)).join("")}
+      </div>
+    </details>
+  `;
+}
+
+function choiceOption(type, item, selectedId) {
+  const selected = String(item.id) === String(selectedId);
+  const label = item.displayName ?? item.label ?? item.id;
+  return `
+    <button
+      type="button"
+      class="choice-option ${selected ? "is-selected" : ""}"
+      data-choice-type="${escapeHtml(type)}"
+      data-choice-id="${escapeHtml(item.id)}"
+      role="option"
+      aria-selected="${selected ? "true" : "false"}"
+    >
+      ${escapeHtml(label)}
+    </button>
+  `;
 }
 
 function portraitOption(id) {
